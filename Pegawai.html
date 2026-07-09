@@ -1,0 +1,45 @@
+<div class="view" id="view-pegawai">
+
+  <div class="grid grid-2">
+    <div class="card card-pad">
+      <div class="section-title">Daftar Pegawai</div>
+      <div class="ticket-list" id="pegawaiList"></div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="section-title">Tambah Pegawai</div>
+      <div class="field">
+        <label>Nama</label>
+        <input id="p_nama">
+      </div>
+      <div class="field">
+        <label>NIP</label>
+        <input id="p_nip">
+      </div>
+      <div class="field">
+        <label>Jabatan</label>
+        <input id="p_jabatan" placeholder="mis. Kepala Seksi Pelayanan">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Pangkat</label>
+          <input id="p_pangkat" placeholder="mis. Penata / III.c">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="p_status">
+            <option>PNS</option>
+            <option>PPPK</option>
+            <option>Non-ASN</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Password Awal</label>
+        <input id="p_password" value="12345">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="tambahPegawaiBaru()">Simpan Pegawai</button>
+    </div>
+  </div>
+
+</div>

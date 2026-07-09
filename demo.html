@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SiPADU · KPKNL Denpasar (Demo)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+  :root{
+    --navy-900:#08182F;
+    --navy-800:#0B2545;
+    --navy-700:#173A6B;
+    --brass:#B8935B;
+    --brass-light:#E4D2AC;
+    --paper:#F7F5EE;
+    --paper-dim:#EFEBDF;
+    --ink:#1C2430;
+    --slate:#4A5568;
+    --green:#2F6B4F;
+    --green-bg:#E4EFE8;
+    --amber:#C08A2E;
+    --amber-bg:#FBF0DD;
+    --maroon:#A63D40;
+    --maroon-bg:#F6E5E4;
+    --line:#DCD6C4;
+    --radius:10px;
+    --shadow:0 1px 2px rgba(11,37,69,.06), 0 6px 20px rgba(11,37,69,.06);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:'IBM Plex Sans', sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{ font-family:'Source Serif 4', serif; margin:0; letter-spacing:.1px; }
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+
+  /* ===== App shell ===== */
+  #app{ display:flex; min-height:100vh; }
+
+  /* ===== Sidebar ===== */
+  .sidebar{
+    width:232px; flex-shrink:0;
+    background:var(--navy-900);
+    color:var(--paper);
+    display:flex; flex-direction:column;
+    padding:22px 16px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; padding:6px 6px 20px; border-bottom:1px solid rgba(247,245,238,.12); margin-bottom:16px;}
+  .seal{
+    width:34px;height:34px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--brass-light), var(--brass) 60%, #8f6d3c 100%);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Source Serif 4',serif; font-weight:700; font-size:13px; color:var(--navy-900);
+    flex-shrink:0;
+  }
+  .brand-text{ line-height:1.15; }
+  .brand-text .t1{ font-family:'Source Serif 4',serif; font-weight:600; font-size:15px; }
+  .brand-text .t2{ font-size:10.5px; color:var(--brass-light); letter-spacing:.4px; }
+
+  .nav-group-label{ font-size:10px; text-transform:uppercase; letter-spacing:1px; color:rgba(247,245,238,.45); margin:14px 10px 6px; }
+  .nav-item{
+    display:flex; align-items:center; gap:10px;
+    padding:9px 12px; border-radius:8px; cursor:pointer;
+    font-size:13.5px; color:rgba(247,245,238,.85);
+    transition:background .15s ease, color .15s ease;
+  }
+  .nav-item .ic{ width:16px; text-align:center; opacity:.85; }
+  .nav-item:hover{ background:rgba(247,245,238,.06); }
+  .nav-item.active{ background:var(--brass); color:var(--navy-900); font-weight:600; }
+  .nav-item.active .ic{ opacity:1; }
+
+  .sidebar-footer{ margin-top:auto; padding-top:14px; border-top:1px solid rgba(247,245,238,.12); }
+  .petugas-card{ font-size:12px; color:rgba(247,245,238,.75); padding:8px 10px; }
+  .petugas-card b{ display:block; color:var(--paper); font-size:13px; }
+  .logout-btn{
+    width:100%; margin-top:8px; padding:8px 10px; border-radius:8px;
+    background:transparent; border:1px solid rgba(247,245,238,.25); color:rgba(247,245,238,.85);
+    font-size:12.5px; cursor:pointer; font-family:inherit;
+  }
+  .logout-btn:hover{ background:rgba(247,245,238,.08); }
+
+  /* ===== Main ===== */
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .topbar{
+    height:60px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
+    padding:0 28px; border-bottom:1px solid var(--line); background:#fff;
+  }
+  .topbar .page-title{ font-size:19px; }
+  .topbar .today{ font-size:12.5px; color:var(--slate); }
+  .content{ flex:1; padding:28px; max-width:1180px; width:100%; margin:0 auto; }
+
+  .view{ display:none; animation:fadeIn .25s ease; }
+  .view.active{ display:block; }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ===== Cards / grids ===== */
+  .grid{ display:grid; gap:16px; }
+  .grid-4{ grid-template-columns:repeat(4,1fr); }
+  .grid-2{ grid-template-columns:1.3fr .7fr; }
+  @media(max-width:900px){ .grid-4{ grid-template-columns:repeat(2,1fr);} .grid-2{ grid-template-columns:1fr;} }
+
+  .card{ background:#fff; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
+  .card-pad{ padding:20px; }
+  .stat-card{ padding:18px 20px; }
+  .stat-card .label{ font-size:11.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--slate); }
+  .stat-card .value{ font-family:'Source Serif 4',serif; font-size:34px; font-weight:600; margin-top:6px; color:var(--navy-800); }
+  .stat-card.accent-brass .value{ color:var(--brass); }
+  .stat-card.accent-green .value{ color:var(--green); }
+  .stat-card.accent-amber .value{ color:var(--amber); }
+
+  /* ===== "Now serving" board — signature element ===== */
+  .now-serving{
+    background:var(--navy-900);
+    border-radius:var(--radius);
+    color:var(--paper);
+    padding:22px 26px;
+    display:flex; align-items:center; justify-content:space-between; gap:20px;
+    position:relative; overflow:hidden;
+  }
+  .now-serving::before{
+    content:''; position:absolute; inset:0;
+    background:repeating-linear-gradient(90deg, rgba(184,147,91,.07) 0 2px, transparent 2px 26px);
+  }
+  .now-serving .ns-label{ font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--brass-light); position:relative; }
+  .now-serving .ns-number{
+    font-family:'IBM Plex Mono', monospace; font-size:40px; font-weight:600; letter-spacing:1px;
+    margin-top:4px; position:relative;
+  }
+  .now-serving .ns-name{ font-size:13px; color:rgba(247,245,238,.8); margin-top:2px; position:relative; }
+  .now-serving .ns-empty{ font-size:14px; color:rgba(247,245,238,.55); position:relative; }
+  .blink{ animation:blink 1.4s steps(1) infinite; }
+  @keyframes blink{ 50%{ opacity:.35; } }
+
+  /* ===== Tickets (queue list) ===== */
+  .ticket-list{ display:flex; flex-direction:column; gap:10px; }
+  .ticket{
+    display:flex; align-items:center; gap:14px;
+    border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; background:#fff;
+    position:relative;
+  }
+  .ticket::before{
+    content:''; position:absolute; left:-1px; top:50%; transform:translateY(-50%);
+    width:10px; height:10px; border-radius:50%; background:var(--paper); border:1px solid var(--line);
+  }
+  .ticket-id{
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px;
+    background:var(--paper-dim); border-radius:7px; padding:8px 10px; color:var(--navy-800); flex-shrink:0;
+  }
+  .ticket-info{ flex:1; min-width:0; }
+  .ticket-info .n{ font-weight:600; font-size:14px; }
+  .ticket-info .s{ font-size:12.5px; color:var(--slate); }
+  .badge{ font-size:11px; font-weight:600; padding:4px 9px; border-radius:20px; white-space:nowrap; }
+  .badge.Menunggu{ background:var(--amber-bg); color:var(--amber); }
+  .badge.Diproses{ background:#E4ECF6; color:var(--navy-700); }
+  .badge.Selesai{ background:var(--green-bg); color:var(--green); }
+  .badge.Dibatalkan{ background:var(--maroon-bg); color:var(--maroon); }
+  .ticket-actions{ display:flex; gap:6px; flex-shrink:0; }
+
+  /* ===== Buttons ===== */
+  .btn{
+    font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
+    border-radius:7px; padding:7px 12px; border:1px solid transparent; transition:filter .15s;
+  }
+  .btn:hover{ filter:brightness(0.95); }
+  .btn-primary{ background:var(--navy-800); color:#fff; }
+  .btn-brass{ background:var(--brass); color:var(--navy-900); }
+  .btn-ghost{ background:#fff; border-color:var(--line); color:var(--ink); }
+  .btn-danger{ background:var(--maroon-bg); color:var(--maroon); }
+  .btn-sm{ padding:5px 9px; font-size:11.5px; }
+  .btn-block{ width:100%; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+  /* ===== Forms ===== */
+  label{ display:block; font-size:12px; font-weight:600; color:var(--slate); margin-bottom:5px; }
+  input, select, textarea{
+    width:100%; font-family:inherit; font-size:13.5px; padding:9px 11px;
+    border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink);
+  }
+  input:focus, select:focus, textarea:focus{ outline:2px solid var(--brass); outline-offset:1px; border-color:var(--brass); }
+  .field{ margin-bottom:14px; }
+  .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+  .filter-bar{ display:flex; gap:10px; align-items:flex-end; margin-bottom:16px; flex-wrap:wrap; }
+  .filter-bar .field{ margin-bottom:0; }
+
+  .empty-state{ text-align:center; padding:40px 20px; color:var(--slate); }
+  .empty-state .ic{ font-size:26px; margin-bottom:8px; }
+
+  .section-title{ font-size:15px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+
+  .toast{
+    position:fixed; bottom:22px; right:22px; background:var(--navy-900); color:#fff;
+    padding:12px 16px; border-radius:8px; font-size:13px; box-shadow:var(--shadow);
+    display:flex; align-items:center; gap:10px; z-index:999; transform:translateY(8px); opacity:0;
+    transition:all .25s ease; pointer-events:none;
+  }
+  .toast.show{ transform:translateY(0); opacity:1; }
+  .toast.error{ background:var(--maroon); }
+
+  /* ===== Login / Public views ===== */
+  .center-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--navy-900); padding:20px; }
+  .auth-card{ width:380px; background:var(--paper); border-radius:14px; padding:32px 30px; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+  .auth-card .seal{ width:46px; height:46px; font-size:17px; margin-bottom:14px; }
+  .auth-card h1{ font-size:21px; }
+  .auth-card .sub{ font-size:12.5px; color:var(--slate); margin-top:4px; margin-bottom:22px; }
+  .auth-tabs{ display:flex; gap:6px; margin-bottom:20px; background:var(--paper-dim); padding:4px; border-radius:9px; }
+  .auth-tab{ flex:1; text-align:center; padding:7px; border-radius:6px; font-size:12.5px; font-weight:600; cursor:pointer; color:var(--slate); }
+  .auth-tab.active{ background:#fff; color:var(--navy-800); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .error-msg{ font-size:12px; color:var(--maroon); margin-top:8px; min-height:16px; }
+
+  .kiosk-result{ text-align:center; padding:30px 10px; }
+  .kiosk-result .ticket-id{ font-size:30px; padding:16px 22px; display:inline-block; margin-top:10px; }
+
+  .stars{ display:flex; gap:6px; font-size:24px; cursor:pointer; }
+  .stars span{ color:var(--line); }
+  .stars span.on{ color:var(--brass); }
+
+  ::-webkit-scrollbar{ width:9px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:20px; }
+</style>
+</head>
+<body>
+<div style="background:var(--brass-light); color:var(--navy-900); text-align:center; font-size:12px; padding:6px; font-weight:600;">
+  MODE DEMO — data disimulasikan di memori browser (bukan Google Sheets sungguhan). Refresh akan mengembalikan ke data awal.
+</div>
+
+
+
+  <!-- ===================== LOGIN / KIOSK (belum masuk) ===================== -->
+  <div id="authScreen" class="center-screen">
+    <div class="auth-card">
+      <div class="seal">KP</div>
+      <h1>SiPADU</h1>
+      <div class="sub">Sistem Pelayanan Terpadu &middot; KPKNL Denpasar</div>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" data-tab="kiosk" onclick="switchAuthTab('kiosk')">Ambil Antrian</div>
+        <div class="auth-tab" data-tab="staff" onclick="switchAuthTab('staff')">Login Petugas</div>
+      </div>
+
+      <!-- Ambil antrian (publik) -->
+      <div id="tab-kiosk">
+        <div class="field">
+          <label for="k_nama">Nama Pemohon</label>
+          <input id="k_nama" placeholder="Nama lengkap">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="k_hp">No. HP</label>
+            <input id="k_hp" placeholder="08xxxxxxxxxx">
+          </div>
+          <div class="field">
+            <label for="k_email">Email</label>
+            <input id="k_email" placeholder="nama@email.com">
+          </div>
+        </div>
+        <div class="field">
+          <label for="k_jenis">Jenis Layanan</label>
+          <select id="k_jenis"></select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="k_jumlah">Jumlah Pengunjung</label>
+            <input id="k_jumlah" type="number" min="1" value="1">
+          </div>
+          <div class="field">
+            <label for="k_uraian">Keperluan (singkat)</label>
+            <input id="k_uraian" placeholder="mis. legalisir dokumen">
+          </div>
+        </div>
+        <button class="btn btn-brass btn-block" onclick="ambilAntrian()">Ambil Nomor Antrian</button>
+        <div id="kioskResult"></div>
+      </div>
+
+      <!-- Login petugas -->
+      <div id="tab-staff" style="display:none;">
+        <div class="field">
+          <label for="s_nip">NIP</label>
+          <input id="s_nip" placeholder="Nomor Induk Pegawai">
+        </div>
+        <div class="field">
+          <label for="s_pass">Password</label>
+          <input id="s_pass" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="loginStaff()">Masuk</button>
+        <div class="error-msg" id="staffError"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== APP (setelah petugas login) ===================== -->
+  <div id="app" style="display:none;">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="seal">KP</div>
+        <div class="brand-text">
+          <div class="t1">SiPADU</div>
+          <div class="t2">KPKNL DENPASAR</div>
+        </div>
+      </div>
+
+      <div class="nav-group-label">Menu</div>
+      <div class="nav-item active" data-view="dashboard" onclick="showView('dashboard')"><span class="ic">&#9632;</span> Dashboard</div>
+      <div class="nav-item" data-view="antrian" onclick="showView('antrian')"><span class="ic">&#128203;</span> Antrian</div>
+      <div class="nav-item" data-view="statistik" onclick="showView('statistik')"><span class="ic">&#128200;</span> Statistik</div>
+      <div class="nav-item" data-view="pegawai" onclick="showView('pegawai')"><span class="ic">&#128100;</span> Pegawai</div>
+
+      <div class="sidebar-footer">
+        <div class="petugas-card">
+          <b id="sfNama">-</b>
+          <span id="sfJabatan">-</span>
+        </div>
+        <button class="logout-btn" onclick="logoutStaff()">Keluar</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="page-title" id="pageTitle">Dashboard</div>
+        <div class="today" id="todayLabel"></div>
+      </div>
+
+      <div class="content">
+        <div class="view active" id="view-dashboard">
+
+  <div class="now-serving" style="margin-bottom:18px;">
+    <div>
+      <div class="ns-label">Sedang Dilayani</div>
+      <div class="ns-number" id="dashNowNumber">— — —</div>
+      <div class="ns-name" id="dashNowName">Belum ada antrian diproses</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="ns-empty blink" id="dashNowBlink">&#9679; LIVE</div>
+    </div>
+  </div>
+
+  <div class="grid grid-4" style="margin-bottom:18px;">
+    <div class="card stat-card">
+      <div class="label">Total Antrian Hari Ini</div>
+      <div class="value" id="dashTotal">0</div>
+    </div>
+    <div class="card stat-card accent-amber">
+      <div class="label">Menunggu</div>
+      <div class="value" id="dashMenunggu">0</div>
+    </div>
+    <div class="card stat-card accent-brass">
+      <div class="label">Diproses</div>
+      <div class="value" id="dashDiproses">0</div>
+    </div>
+    <div class="card stat-card accent-green">
+      <div class="label">Selesai</div>
+      <div class="value" id="dashSelesai">0</div>
+    </div>
+  </div>
+
+  <div class="card card-pad">
+    <div class="section-title">Antrian Berikutnya <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">Muat ulang</button></div>
+    <div class="ticket-list" id="dashNextList"></div>
+  </div>
+
+</div>
+
+        <div class="view" id="view-antrian">
+
+  <div class="filter-bar">
+    <div class="field">
+      <label>Tanggal</label>
+      <input type="date" id="antTanggal">
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <select id="antStatus">
+        <option>Semua</option>
+        <option>Menunggu</option>
+        <option>Diproses</option>
+        <option>Selesai</option>
+        <option>Dibatalkan</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="loadAntrian()">Terapkan Filter</button>
+    <button class="btn btn-ghost" onclick="document.getElementById('antTanggal').value='';document.getElementById('antStatus').value='Semua';loadAntrian();">Reset</button>
+  </div>
+
+  <div class="card card-pad">
+    <div class="section-title">Daftar Antrian</div>
+    <div class="ticket-list" id="antrianList"></div>
+  </div>
+</div>
+
+<!-- Modal sederhana untuk selesaikan / batalkan -->
+<div id="tindakanModal" style="display:none; position:fixed; inset:0; background:rgba(8,24,47,.45); z-index:200; align-items:center; justify-content:center;">
+  <div class="card card-pad" style="width:380px;">
+    <h3 style="margin-bottom:14px;">Catatan Tindakan</h3>
+    <div class="field">
+      <label>Nomor Antrian</label>
+      <input id="modalId" disabled>
+    </div>
+    <div class="field">
+      <label>Tindakan / Catatan Petugas</label>
+      <textarea id="modalTindakan" rows="3" placeholder="mis. dokumen diverifikasi dan diserahkan"></textarea>
+    </div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
+      <button class="btn btn-primary" id="modalConfirmBtn">Simpan</button>
+    </div>
+  </div>
+</div>
+
+        <div class="view" id="view-statistik">
+
+  <div class="filter-bar">
+    <div class="field">
+      <label>Rentang</label>
+      <select id="statRange" onchange="loadStatistik()">
+        <option value="7">7 hari terakhir</option>
+        <option value="30">30 hari terakhir</option>
+        <option value="90">90 hari terakhir</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid grid-4" style="margin-bottom:18px;">
+    <div class="card stat-card">
+      <div class="label">Total Layanan</div>
+      <div class="value" id="statTotal">0</div>
+    </div>
+    <div class="card stat-card accent-green">
+      <div class="label">Selesai</div>
+      <div class="value" id="statSelesai">0</div>
+    </div>
+    <div class="card stat-card accent-brass">
+      <div class="label">Rata-rata Rating</div>
+      <div class="value" id="statRating">—</div>
+    </div>
+    <div class="card stat-card">
+      <div class="label">Rata-rata Durasi</div>
+      <div class="value" id="statDurasi">—</div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card card-pad">
+      <div class="section-title">Antrian per Hari</div>
+      <canvas id="chartHarian" height="160"></canvas>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Layanan Terpopuler</div>
+      <canvas id="chartJenis" height="160"></canvas>
+    </div>
+  </div>
+
+</div>
+
+
+        <div class="view" id="view-pegawai">
+
+  <div class="grid grid-2">
+    <div class="card card-pad">
+      <div class="section-title">Daftar Pegawai</div>
+      <div class="ticket-list" id="pegawaiList"></div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="section-title">Tambah Pegawai</div>
+      <div class="field">
+        <label>Nama</label>
+        <input id="p_nama">
+      </div>
+      <div class="field">
+        <label>NIP</label>
+        <input id="p_nip">
+      </div>
+      <div class="field">
+        <label>Jabatan</label>
+        <input id="p_jabatan" placeholder="mis. Kepala Seksi Pelayanan">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Pangkat</label>
+          <input id="p_pangkat" placeholder="mis. Penata / III.c">
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select id="p_status">
+            <option>PNS</option>
+            <option>PPPK</option>
+            <option>Non-ASN</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Password Awal</label>
+        <input id="p_password" value="12345">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="tambahPegawaiBaru()">Simpan Pegawai</button>
+    </div>
+  </div>
+
+</div>
+
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  
+
+
+<script>
+/* ===================================================================
+   MOCK BACKEND — mensimulasikan Google Sheets + Apps Script di memori
+   browser, dengan struktur kolom & data contoh persis seperti sheet asli.
+   Ini HANYA untuk pratinjau; versi produksi ada di Code.gs (Apps Script).
+   =================================================================== */
+
+const JENIS_LAYANAN_LIST = [
+  'Kutipan Risalah Lelang', 'Kuitansi Lelang', 'Pendaftaran Lelang',
+  'Penilaian Aset', 'Piutang Negara', 'Informasi Kekayaan Negara',
+  'Pengaduan / Lainnya'
+];
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function nowStamp() {
+  const d = new Date();
+  return todayISO() + ' ' + d.toTimeString().slice(0, 8);
+}
+
+// --- Sheet "layanan" (data contoh diambil dari screenshot pengguna,
+//     tanggal disesuaikan ke hari ini agar tampil di Dashboard) ---
+let DB_LAYANAN = [
+  { id: '120260607', nama: 'Saputro', no_hp: '8963333', email: 'email@Email.com', jumlah_pengunjung: 1,
+    jenis_layanan: 'Kutipan Risalah', uraian_layanan: 'tes data', tgl_submit_layanan: todayISO() + ' 08:57:00',
+    nama_petugas: '', status_pegawai: 'Menunggu', tindakan: '', tgl_selesai: '', rating: '', ulasan: '', waktu_login: todayISO() + ' 08:57:00' },
+  { id: '220260607', nama: 'Sapiono', no_hp: '874556865', email: 'email@Email.com', jumlah_pengunjung: 1,
+    jenis_layanan: 'Kuitansi Lelang', uraian_layanan: 'tes data lagi', tgl_submit_layanan: todayISO() + ' 08:58:00',
+    nama_petugas: 'I Ketut Arim', status_pegawai: 'Diproses', tindakan: '', tgl_selesai: '', rating: '', ulasan: '', waktu_login: todayISO() + ' 08:58:00' }
+];
+
+// --- Sheet "pegawai" (persis dari screenshot pengguna) ---
+let DB_PEGAWAI = [
+  { Nama: 'I Ketut Arim', NIP: '196902241989', Jabatan: 'Kepala KPKNL', Pangkat: 'Pembina Tk. I', Password: '12345', Status: 'PNS', Keaktifan: 1 },
+  { Nama: 'Wasis Winar', NIP: '197403191996', Jabatan: 'Pelelang Ahli M', Pangkat: 'Pembina / IV.a', Password: '12345', Status: 'PNS', Keaktifan: 1 },
+  { Nama: 'Novan Prihe', NIP: '197511151999', Jabatan: 'Kepala Seksi P', Pangkat: 'Pembina / IV.a', Password: '12345', Status: 'PNS', Keaktifan: 1 }
+];
+
+function generateId() {
+  const compact = todayISO().replace(/-/g, '');
+  const countToday = DB_LAYANAN.filter(r => String(r.id).endsWith(compact)).length;
+  return (countToday + 1) + compact;
+}
+
+/* ============ backend functions (nama sama dengan Code.gs) ============ */
+
+const Backend = {
+  getJenisLayananList() { return JENIS_LAYANAN_LIST; },
+
+  submitAntrian(form) {
+    const id = generateId();
+    DB_LAYANAN.push({
+      id, nama: form.nama || '', no_hp: form.no_hp || '', email: form.email || '',
+      jumlah_pengunjung: Number(form.jumlah_pengunjung) || 1, jenis_layanan: form.jenis_layanan || '',
+      uraian_layanan: form.uraian_layanan || '', tgl_submit_layanan: nowStamp(),
+      nama_petugas: '', status_pegawai: 'Menunggu', tindakan: '', tgl_selesai: '',
+      rating: '', ulasan: '', waktu_login: nowStamp()
+    });
+    return { ok: true, id };
+  },
+
+  loginPegawai(nip, password) {
+    const found = DB_PEGAWAI.find(p => String(p.NIP) === String(nip));
+    if (!found) return { ok: false, message: 'NIP tidak ditemukan.' };
+    if (String(found.Keaktifan) !== '1') return { ok: false, message: 'Akun tidak aktif. Hubungi admin.' };
+    if (String(found.Password) !== String(password)) return { ok: false, message: 'Password salah.' };
+    return { ok: true, petugas: { nama: found.Nama, nip: found.NIP, jabatan: found.Jabatan, pangkat: found.Pangkat, status: found.Status } };
+  },
+
+  getDashboardData() {
+    const today = todayISO();
+    const rows = DB_LAYANAN.filter(r => r.tgl_submit_layanan.slice(0, 10) === today);
+    const menunggu = rows.filter(r => r.status_pegawai === 'Menunggu');
+    const diproses = rows.filter(r => r.status_pegawai === 'Diproses');
+    const selesai = rows.filter(r => r.status_pegawai === 'Selesai');
+    const sd = diproses.length ? diproses[diproses.length - 1] : null;
+    return {
+      total: rows.length, menunggu: menunggu.length, diproses: diproses.length, selesai: selesai.length,
+      sedangDilayani: sd ? { id: sd.id, nama: sd.nama, petugas: sd.nama_petugas } : null,
+      antrianBerikutnya: menunggu.slice(0, 5).map(r => ({ id: r.id, nama: r.nama, jenis_layanan: r.jenis_layanan }))
+    };
+  },
+
+  getAntrianList(filter) {
+    let data = DB_LAYANAN.slice();
+    if (filter && filter.tanggal) data = data.filter(r => r.tgl_submit_layanan.slice(0, 10) === filter.tanggal);
+    if (filter && filter.status && filter.status !== 'Semua') data = data.filter(r => r.status_pegawai === filter.status);
+    return data.slice().reverse();
+  },
+
+  panggilAntrian(id, nama) { return Backend.updateStatus(id, 'Diproses', nama, ''); },
+  selesaikanAntrian(id, nama, tindakan) { return Backend.updateStatus(id, 'Selesai', nama, tindakan); },
+  batalkanAntrian(id, nama, tindakan) { return Backend.updateStatus(id, 'Dibatalkan', nama, tindakan); },
+
+  updateStatus(id, status, nama, tindakan) {
+    const row = DB_LAYANAN.find(r => String(r.id) === String(id));
+    if (!row) return { ok: false, message: 'Nomor antrian tidak ditemukan.' };
+    row.nama_petugas = nama || row.nama_petugas;
+    row.status_pegawai = status;
+    if (tindakan) row.tindakan = tindakan;
+    if (status === 'Selesai' || status === 'Dibatalkan') row.tgl_selesai = nowStamp();
+    return { ok: true };
+  },
+
+  getStatistikData(range) {
+    const days = (range && range.days) ? range.days : 7;
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+    const filtered = DB_LAYANAN.filter(r => new Date(r.tgl_submit_layanan.replace(' ', 'T')) >= cutoff);
+    const perJenis = {}, perHari = {};
+    filtered.forEach(r => {
+      perJenis[r.jenis_layanan || 'Lainnya'] = (perJenis[r.jenis_layanan || 'Lainnya'] || 0) + 1;
+      const k = r.tgl_submit_layanan.slice(0, 10);
+      perHari[k] = (perHari[k] || 0) + 1;
+    });
+    const rated = filtered.filter(r => r.rating !== '' && !isNaN(Number(r.rating)));
+    const avgRating = rated.length ? rated.reduce((s, r) => s + Number(r.rating), 0) / rated.length : null;
+    const durations = filtered.filter(r => r.tgl_selesai).map(r => (new Date(r.tgl_selesai.replace(' ', 'T')) - new Date(r.tgl_submit_layanan.replace(' ', 'T'))) / 60000);
+    const avgDurasi = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
+    return {
+      totalLayanan: filtered.length, perJenis, perHari, avgRating, avgDurasiMenit: avgDurasi,
+      selesai: filtered.filter(r => r.status_pegawai === 'Selesai').length,
+      dibatalkan: filtered.filter(r => r.status_pegawai === 'Dibatalkan').length
+    };
+  },
+
+  getPegawaiList() {
+    return DB_PEGAWAI.map(p => ({ nama: p.Nama, nip: p.NIP, jabatan: p.Jabatan, pangkat: p.Pangkat, status: p.Status, keaktifan: p.Keaktifan }));
+  },
+
+  tambahPegawai(form) {
+    DB_PEGAWAI.push({ Nama: form.nama, NIP: form.nip, Jabatan: form.jabatan, Pangkat: form.pangkat, Password: form.password || '12345', Status: form.status || 'PNS', Keaktifan: 1 });
+    return { ok: true };
+  },
+
+  setKeaktifanPegawai(nip, val) {
+    const p = DB_PEGAWAI.find(p => String(p.NIP) === String(nip));
+    if (!p) return { ok: false, message: 'NIP tidak ditemukan.' };
+    p.Keaktifan = val ? 1 : 0;
+    return { ok: true };
+  }
+};
+
+/* ============ shim: meniru google.script.run agar JavaScript.html
+   asli bisa dipakai tanpa modifikasi ============ */
+function makeRunner() {
+  let successCb = () => {};
+  let failureCb = () => {};
+  const handle = {
+    withSuccessHandler(cb) { successCb = cb; return handle; },
+    withFailureHandler(cb) { failureCb = cb; return handle; }
+  };
+  return new Proxy(handle, {
+    get(target, prop) {
+      if (prop in target) return target[prop];
+      return (...args) => {
+        setTimeout(() => {
+          try {
+            if (typeof Backend[prop] !== 'function') throw new Error('Fungsi backend "' + String(prop) + '" tidak ditemukan.');
+            const result = Backend[prop](...args);
+            successCb(result);
+          } catch (e) { failureCb(e); }
+        }, 120); // simulasi latensi jaringan
+        return makeRunner();
+      };
+    }
+  });
+}
+
+window.google = { script: { run: makeRunner() } };
+
+let currentPetugas = null;
+  let charts = {};
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('todayLabel').textContent = new Date().toLocaleDateString('id-ID', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+    document.getElementById('antTanggal').value = new Date().toISOString().slice(0, 10);
+    loadJenisLayanan();
+  });
+
+  /* ================= TOAST ================= */
+  function toast(msg, isError) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(() => el.className = 'toast', 2400);
+  }
+
+  /* ================= AUTH TABS ================= */
+  function switchAuthTab(tab) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.getElementById('tab-kiosk').style.display = tab === 'kiosk' ? 'block' : 'none';
+    document.getElementById('tab-staff').style.display = tab === 'staff' ? 'block' : 'none';
+  }
+
+  /* ================= AMBIL ANTRIAN (PUBLIK) ================= */
+  function loadJenisLayanan() {
+    google.script.run.withSuccessHandler(list => {
+      const sel = document.getElementById('k_jenis');
+      sel.innerHTML = list.map(j => `<option>${j}</option>`).join('');
+    }).getJenisLayananList();
+  }
+
+  function ambilAntrian() {
+    const form = {
+      nama: document.getElementById('k_nama').value.trim(),
+      no_hp: document.getElementById('k_hp').value.trim(),
+      email: document.getElementById('k_email').value.trim(),
+      jenis_layanan: document.getElementById('k_jenis').value,
+      jumlah_pengunjung: document.getElementById('k_jumlah').value,
+      uraian_layanan: document.getElementById('k_uraian').value.trim()
+    };
+    if (!form.nama) { toast('Nama wajib diisi.', true); return; }
+
+    google.script.run
+      .withSuccessHandler(res => {
+        document.getElementById('kioskResult').innerHTML = `
+          <div class="kiosk-result">
+            <div style="font-size:12.5px;color:var(--slate);">Nomor antrian Anda</div>
+            <div class="ticket-id mono">${res.id}</div>
+            <div style="font-size:12px;color:var(--slate);margin-top:10px;">Simpan nomor ini dan tunggu panggilan petugas.</div>
+          </div>`;
+      })
+      .withFailureHandler(err => toast('Gagal mengambil antrian: ' + err.message, true))
+      .submitAntrian(form);
+  }
+
+  /* ================= LOGIN PETUGAS ================= */
+  function loginStaff() {
+    const nip = document.getElementById('s_nip').value.trim();
+    const pass = document.getElementById('s_pass').value;
+    document.getElementById('staffError').textContent = '';
+
+    google.script.run
+      .withSuccessHandler(res => {
+        if (!res.ok) { document.getElementById('staffError').textContent = res.message; return; }
+        currentPetugas = res.petugas;
+        document.getElementById('sfNama').textContent = currentPetugas.nama;
+        document.getElementById('sfJabatan').textContent = currentPetugas.jabatan;
+        document.getElementById('authScreen').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
+        showView('dashboard');
+      })
+      .withFailureHandler(err => document.getElementById('staffError').textContent = err.message)
+      .loginPegawai(nip, pass);
+  }
+
+  function logoutStaff() {
+    currentPetugas = null;
+    document.getElementById('app').style.display = 'none';
+    document.getElementById('authScreen').style.display = 'flex';
+    document.getElementById('s_pass').value = '';
+  }
+
+  /* ================= ROUTING SPA (tanpa reload) ================= */
+  function showView(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === name));
+
+    const titles = { dashboard: 'Dashboard', antrian: 'Antrian', statistik: 'Statistik', pegawai: 'Manajemen Pegawai' };
+    document.getElementById('pageTitle').textContent = titles[name];
+
+    if (name === 'dashboard') loadDashboard();
+    if (name === 'antrian') loadAntrian();
+    if (name === 'statistik') loadStatistik();
+    if (name === 'pegawai') loadPegawai();
+  }
+
+  /* ================= DASHBOARD ================= */
+  function loadDashboard() {
+    google.script.run.withSuccessHandler(d => {
+      document.getElementById('dashTotal').textContent = d.total;
+      document.getElementById('dashMenunggu').textContent = d.menunggu;
+      document.getElementById('dashDiproses').textContent = d.diproses;
+      document.getElementById('dashSelesai').textContent = d.selesai;
+
+      if (d.sedangDilayani) {
+        document.getElementById('dashNowNumber').textContent = d.sedangDilayani.id;
+        document.getElementById('dashNowName').textContent = d.sedangDilayani.nama + ' — oleh ' + (d.sedangDilayani.petugas || '-');
+      } else {
+        document.getElementById('dashNowNumber').textContent = '— — —';
+        document.getElementById('dashNowName').textContent = 'Belum ada antrian diproses';
+      }
+
+      const list = document.getElementById('dashNextList');
+      if (!d.antrianBerikutnya.length) {
+        list.innerHTML = `<div class="empty-state"><div class="ic">&#128203;</div>Tidak ada antrian menunggu.</div>`;
+      } else {
+        list.innerHTML = d.antrianBerikutnya.map(r => `
+          <div class="ticket">
+            <div class="ticket-id mono">${r.id}</div>
+            <div class="ticket-info">
+              <div class="n">${r.nama}</div>
+              <div class="s">${r.jenis_layanan}</div>
+            </div>
+            <span class="badge Menunggu">Menunggu</span>
+          </div>`).join('');
+      }
+    }).getDashboardData();
+  }
+
+  /* ================= ANTRIAN ================= */
+  function loadAntrian() {
+    const filter = {
+      tanggal: document.getElementById('antTanggal').value,
+      status: document.getElementById('antStatus').value
+    };
+    google.script.run.withSuccessHandler(rows => {
+      const list = document.getElementById('antrianList');
+      if (!rows.length) {
+        list.innerHTML = `<div class="empty-state"><div class="ic">&#128203;</div>Tidak ada data untuk filter ini.</div>`;
+        return;
+      }
+      list.innerHTML = rows.map(r => renderTicket(r)).join('');
+    }).getAntrianList(filter);
+  }
+
+  function renderTicket(r) {
+    const status = r.status_pegawai || 'Menunggu';
+    let actions = '';
+    if (status === 'Menunggu') {
+      actions = `<button class="btn btn-brass btn-sm" onclick="panggil('${r.id}')">Panggil</button>
+                 <button class="btn btn-danger btn-sm" onclick="openModal('${r.id}','batal')">Batalkan</button>`;
+    } else if (status === 'Diproses') {
+      actions = `<button class="btn btn-primary btn-sm" onclick="openModal('${r.id}','selesai')">Selesaikan</button>`;
+    }
+    return `
+      <div class="ticket">
+        <div class="ticket-id mono">${r.id}</div>
+        <div class="ticket-info">
+          <div class="n">${r.nama} <span style="color:var(--slate);font-weight:400;">&middot; ${r.jenis_layanan}</span></div>
+          <div class="s">${r.uraian_layanan || '-'} &middot; petugas: ${r.nama_petugas || '-'}</div>
+        </div>
+        <span class="badge ${status}">${status}</span>
+        <div class="ticket-actions">${actions}</div>
+      </div>`;
+  }
+
+  function panggil(id) {
+    if (!currentPetugas) { toast('Silakan login sebagai petugas.', true); return; }
+    google.script.run.withSuccessHandler(() => { toast('Antrian ' + id + ' dipanggil.'); loadAntrian(); loadDashboard(); })
+      .panggilAntrian(id, currentPetugas.nama);
+  }
+
+  let modalCtx = null;
+  function openModal(id, type) {
+    modalCtx = { id, type };
+    document.getElementById('modalId').value = id;
+    document.getElementById('modalTindakan').value = '';
+    document.getElementById('tindakanModal').style.display = 'flex';
+    document.getElementById('modalConfirmBtn').onclick = confirmModal;
+  }
+  function closeModal() { document.getElementById('tindakanModal').style.display = 'none'; modalCtx = null; }
+
+  function confirmModal() {
+    const tindakan = document.getElementById('modalTindakan').value.trim();
+    const fn = modalCtx.type === 'selesai' ? 'selesaikanAntrian' : 'batalkanAntrian';
+    google.script.run.withSuccessHandler(() => {
+      toast('Antrian ' + modalCtx.id + ' diperbarui.');
+      closeModal(); loadAntrian(); loadDashboard();
+    })[fn](modalCtx.id, currentPetugas ? currentPetugas.nama : '', tindakan);
+  }
+
+  /* ================= STATISTIK ================= */
+  function loadStatistik() {
+    const days = Number(document.getElementById('statRange').value);
+    google.script.run.withSuccessHandler(d => {
+      document.getElementById('statTotal').textContent = d.totalLayanan;
+      document.getElementById('statSelesai').textContent = d.selesai;
+      document.getElementById('statRating').textContent = d.avgRating ? d.avgRating.toFixed(1) + ' / 5' : '—';
+      document.getElementById('statDurasi').textContent = d.avgDurasiMenit ? Math.round(d.avgDurasiMenit) + ' mnt' : '—';
+
+      renderChart('chartHarian', 'bar', Object.keys(d.perHari), Object.values(d.perHari), '#0B2545');
+      renderChart('chartJenis', 'bar', Object.keys(d.perJenis), Object.values(d.perJenis), '#B8935B');
+    }).getStatistikData({ days });
+  }
+
+  function renderChart(canvasId, type, labels, data, color) {
+    if (charts[canvasId]) charts[canvasId].destroy();
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    charts[canvasId] = new Chart(ctx, {
+      type,
+      data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 5 }] },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+  }
+
+  /* ================= PEGAWAI ================= */
+  function loadPegawai() {
+    google.script.run.withSuccessHandler(list => {
+      const el = document.getElementById('pegawaiList');
+      el.innerHTML = list.map(p => `
+        <div class="ticket">
+          <div class="ticket-info">
+            <div class="n">${p.nama}</div>
+            <div class="s">${p.jabatan} &middot; ${p.pangkat} &middot; NIP ${p.nip}</div>
+          </div>
+          <span class="badge ${Number(p.keaktifan) === 1 ? 'Selesai' : 'Dibatalkan'}">${Number(p.keaktifan) === 1 ? 'Aktif' : 'Nonaktif'}</span>
+          <div class="ticket-actions">
+            <button class="btn btn-ghost btn-sm" onclick="toggleKeaktifan('${p.nip}', ${Number(p.keaktifan) === 1 ? 0 : 1})">
+              ${Number(p.keaktifan) === 1 ? 'Nonaktifkan' : 'Aktifkan'}
+            </button>
+          </div>
+        </div>`).join('');
+    }).getPegawaiList();
+  }
+
+  function toggleKeaktifan(nip, val) {
+    google.script.run.withSuccessHandler(() => { toast('Status pegawai diperbarui.'); loadPegawai(); })
+      .setKeaktifanPegawai(nip, val);
+  }
+
+  function tambahPegawaiBaru() {
+    const form = {
+      nama: document.getElementById('p_nama').value.trim(),
+      nip: document.getElementById('p_nip').value.trim(),
+      jabatan: document.getElementById('p_jabatan').value.trim(),
+      pangkat: document.getElementById('p_pangkat').value.trim(),
+      status: document.getElementById('p_status').value,
+      password: document.getElementById('p_password').value.trim()
+    };
+    if (!form.nama || !form.nip) { toast('Nama dan NIP wajib diisi.', true); return; }
+
+    google.script.run.withSuccessHandler(() => {
+      toast('Pegawai ditambahkan.');
+      ['p_nama', 'p_nip', 'p_jabatan', 'p_pangkat'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('p_password').value = '12345';
+      loadPegawai();
+    }).tambahPegawai(form);
+  }
+</script>
+</body>
+</html>
