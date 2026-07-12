@@ -8,6 +8,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root{
     --ink:#161a1d;
@@ -25,17 +30,19 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;background:var(--stone);font-family:var(--body);color:var(--ink);}
+  body{display:flex;flex-direction:column;}
 
-  /* ---- Top bar ---- */
-  #topbar{
+  /* ---- App nav (tabs) ---- */
+  #appNav{
     background:var(--panel);
     color:var(--text-on-panel);
     display:flex;
     align-items:center;
-    gap:14px;
+    gap:6px;
     padding:10px 16px;
-    position:sticky; top:0; z-index:50;
+    z-index:70;
     box-shadow:0 2px 10px rgba(0,0,0,.25);
+    flex-wrap:wrap;
   }
   #brand{
     font-family:var(--display);
@@ -43,10 +50,37 @@
     font-size:18px;
     letter-spacing:.2px;
     display:flex; align-items:center; gap:8px;
-    padding-right:10px;
+    padding-right:14px;
+    margin-right:8px;
     border-right:1px solid #3a3f47;
   }
   #brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);display:inline-block;}
+  .navtab{
+    background:transparent;
+    border:1px solid #3a3f47;
+    color:var(--text-on-panel);
+    padding:8px 13px;
+    border-radius:8px;
+    font-family:var(--body);
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .navtab:hover{background:var(--panel-2);}
+  .navtab.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  /* ---- Shared toolbar look (used inside panels) ---- */
+  .tool-toolbar{
+    background:var(--panel);
+    color:var(--text-on-panel);
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:10px 16px;
+    box-shadow:0 2px 10px rgba(0,0,0,.2);
+    flex-wrap:wrap;
+  }
   .tool{
     background:transparent;
     border:1px solid #3a3f47;
@@ -63,16 +97,9 @@
   }
   .tool:hover{background:var(--panel-2);}
   .tool.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .tool.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
   .tool:disabled{opacity:.35;cursor:not-allowed;}
-  #topbar .spacer{flex:1;}
-  #fileInput,#imgInput{display:none;}
-  #pageInfo{
-    font-family:var(--mono);
-    font-size:12px;
-    color:#9aa0a8;
-    padding:0 8px;
-    white-space:nowrap;
-  }
+  .toolbar-spacer{flex:1;}
   input[type=color]{
     width:30px;height:30px;border:none;border-radius:6px;background:none;cursor:pointer;padding:0;
   }
@@ -80,9 +107,82 @@
     width:52px;background:var(--panel-2);color:var(--text-on-panel);border:1px solid #3a3f47;border-radius:6px;padding:6px;font-family:var(--mono);font-size:12px;
   }
 
-  /* ---- Workspace ---- */
+  /* ---- Panels / tabs ---- */
+  #main{flex:1;min-height:0;position:relative;}
+  .panel{height:100%;display:none;flex-direction:column;}
+  .panel.active{display:flex;}
+  .panel-simple{
+    overflow-y:auto;
+    padding:32px 20px 100px;
+  }
+  .panel-inner{
+    max-width:880px;
+    margin:0 auto;
+  }
+  .panel-inner h2{
+    font-family:var(--display);
+    font-size:22px;
+    margin:0 0 6px;
+  }
+  .panel-inner .lead{
+    color:#6b6558;
+    font-size:14px;
+    margin:0 0 22px;
+  }
+  .note{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:#7a7568;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 14px;
+    margin-top:14px;
+    line-height:1.5;
+  }
+  .drop-area{
+    border:2px dashed var(--line);
+    border-radius:14px;
+    background:var(--paper);
+    padding:34px 20px;
+    text-align:center;
+    cursor:pointer;
+  }
+  .drop-area:hover{border-color:var(--accent);}
+  .drop-area p{margin:8px 0 0;color:#6b6558;font-size:13px;}
+
+  /* file list for merge */
+  .file-list{margin-top:18px;display:flex;flex-direction:column;gap:8px;}
+  .file-row{
+    display:flex;align-items:center;gap:10px;
+    background:#fff;border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;font-size:13px;
+  }
+  .file-row .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .file-row button{
+    border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px;
+  }
+  .file-row button:hover{background:var(--accent-soft);}
+
+  /* rotate thumbnails */
+  .thumb-grid{display:flex;flex-wrap:wrap;gap:20px;margin-top:20px;}
+  .thumb-card{
+    background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;width:190px;
+  }
+  .thumb-card canvas{max-width:160px;box-shadow:0 4px 14px rgba(0,0,0,.15);}
+  .thumb-card .lbl{font-family:var(--mono);font-size:11px;color:#7a7568;}
+  .thumb-card .rot-btns{display:flex;gap:6px;}
+  .thumb-card .rot-btns button{
+    border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:14px;
+  }
+  .thumb-card .rot-btns button:hover{background:var(--accent-soft);}
+
+  select.tool{appearance:none;padding-right:24px;}
+
+  /* ---- Editor-specific (page rendering) ---- */
   #workspace{
-    height:calc(100% - 58px);
+    flex:1;
     overflow:auto;
     padding:40px 0 120px;
     display:flex;
@@ -217,7 +317,7 @@
     box-shadow:0 6px 20px rgba(0,0,0,.3);
     opacity:0; pointer-events:none;
     transition:opacity .2s ease;
-    z-index:60;
+    z-index:80;
   }
   #hint.show{opacity:1;}
 
@@ -227,47 +327,210 @@
     background:rgba(164,70,47,.08);
     pointer-events:none;
     display:none;
+    z-index:75;
+  }
+
+  #busyOverlay{
+    position:fixed; inset:0;
+    background:rgba(22,26,29,.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:90;
+  }
+  #busyOverlay.show{display:flex;}
+  #busyBox{
+    background:var(--panel);
+    color:var(--text-on-panel);
+    padding:18px 26px;
+    border-radius:12px;
+    font-family:var(--mono);
+    font-size:13px;
   }
 </style>
 </head>
 <body>
 
-<div id="topbar">
+<div id="appNav">
   <div id="brand"><span class="dot"></span>PDF Editor</div>
-
-  <button class="tool" id="btnUpload">Buka PDF</button>
-  <input type="file" id="fileInput" accept="application/pdf">
-
-  <button class="tool" id="btnText" disabled>+ Teks</button>
-  <button class="tool" id="btnEditExisting" disabled>✎ Edit Teks Asli</button>
-  <button class="tool" id="btnWhiteout" disabled>Tutup Teks Lama</button>
-  <button class="tool" id="btnImage" disabled>+ Gambar</button>
-  <input type="file" id="imgInput" accept="image/*">
-
-  <input type="color" id="fontColor" value="#161a1d" title="Warna teks">
-  <input type="number" id="fontSize" value="16" min="6" max="96" title="Ukuran font">
-
-  <div class="spacer"></div>
-  <span id="pageInfo"></span>
-  <button class="tool" id="btnDownload" disabled style="background:var(--accent);border-color:var(--accent);">Simpan PDF ⬇</button>
+  <button class="navtab active" data-tab="editor">Edit Teks/Gambar</button>
+  <button class="navtab" data-tab="merge">Gabung PDF</button>
+  <button class="navtab" data-tab="rotate">Rotate Halaman</button>
+  <button class="navtab" data-tab="compress">Compress</button>
+  <button class="navtab" data-tab="convert">Konversi File</button>
 </div>
 
-<div id="workspace">
-  <div id="dropzone">
-    <div class="eyebrow">Editor PDF di browser</div>
-    <h1>Buka file PDF untuk mulai edit</h1>
-    <p>Klik langsung pada teks asli untuk menggantinya, tambahkan teks/gambar baru, atau tutup teks lama secara manual. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
-    <button id="btnUpload2">Pilih file PDF</button>
-  </div>
+<div id="main">
+
+  <!-- ================= EDITOR PANEL ================= -->
+  <section class="panel active" id="panel-editor">
+    <div class="tool-toolbar">
+      <button class="tool" id="btnUpload">Buka PDF</button>
+      <input type="file" id="fileInput" accept="application/pdf" hidden>
+
+      <button class="tool" id="btnText" disabled>+ Teks</button>
+      <button class="tool" id="btnEditExisting" disabled>✎ Edit Teks Asli</button>
+      <button class="tool" id="btnWhiteout" disabled>Tutup Teks Lama</button>
+      <button class="tool" id="btnImage" disabled>+ Gambar</button>
+      <input type="file" id="imgInput" accept="image/*" hidden>
+
+      <input type="color" id="fontColor" value="#161a1d" title="Warna teks">
+      <input type="number" id="fontSize" value="16" min="6" max="96" title="Ukuran font">
+
+      <div class="toolbar-spacer"></div>
+      <span id="pageInfo" style="font-family:var(--mono);font-size:12px;color:#9aa0a8;"></span>
+      <button class="tool primary" id="btnDownload" disabled>Simpan PDF ⬇</button>
+    </div>
+
+    <div id="workspace">
+      <div id="dropzone">
+        <div class="eyebrow">Editor PDF di browser</div>
+        <h1>Buka file PDF untuk mulai edit</h1>
+        <p>Klik langsung pada teks asli untuk menggantinya, tambahkan teks/gambar baru, atau tutup teks lama secara manual. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
+        <button id="btnUpload2">Pilih file PDF</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= MERGE PANEL ================= -->
+  <section class="panel" id="panel-merge">
+    <div class="tool-toolbar">
+      <button class="tool" id="mergeAddFiles">+ Tambah PDF</button>
+      <input type="file" id="mergeFileInput" accept="application/pdf" multiple hidden>
+      <div class="toolbar-spacer"></div>
+      <button class="tool primary" id="mergeBtn" disabled>Gabungkan &amp; Unduh</button>
+    </div>
+    <div class="panel-simple">
+      <div class="panel-inner">
+        <h2>Gabung beberapa PDF jadi satu</h2>
+        <p class="lead">Tambahkan file dalam urutan yang kamu mau, atur ulang dengan tombol ↑/↓, lalu gabungkan.</p>
+        <div class="drop-area" id="mergeDropArea">
+          <div>📄 Klik atau seret beberapa file PDF ke sini</div>
+          <p>Bisa pilih banyak file sekaligus</p>
+        </div>
+        <div class="file-list" id="mergeList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ROTATE PANEL ================= -->
+  <section class="panel" id="panel-rotate">
+    <div class="tool-toolbar">
+      <button class="tool" id="rotateUploadBtn">Buka PDF</button>
+      <input type="file" id="rotateFileInput" accept="application/pdf" hidden>
+      <div class="toolbar-spacer"></div>
+      <span id="rotateInfo" style="font-family:var(--mono);font-size:12px;color:#9aa0a8;"></span>
+      <button class="tool primary" id="rotateSaveBtn" disabled>Simpan PDF ⬇</button>
+    </div>
+    <div class="panel-simple">
+      <div class="panel-inner">
+        <h2>Putar halaman</h2>
+        <p class="lead">Buka PDF, lalu putar halaman satu per satu dengan tombol ⟲ / ⟳ di bawah tiap halaman.</p>
+        <div id="rotateThumbs" class="thumb-grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= COMPRESS PANEL ================= -->
+  <section class="panel" id="panel-compress">
+    <div class="tool-toolbar">
+      <button class="tool" id="compressUploadBtn">Buka PDF</button>
+      <input type="file" id="compressFileInput" accept="application/pdf" hidden>
+      <select class="tool" id="compressLevel">
+        <option value="high">Kualitas tinggi (file lebih besar)</option>
+        <option value="medium" selected>Sedang (disarankan)</option>
+        <option value="low">Kecil (kualitas lebih rendah)</option>
+      </select>
+      <div class="toolbar-spacer"></div>
+      <button class="tool primary" id="compressBtn" disabled>Compress &amp; Unduh</button>
+    </div>
+    <div class="panel-simple">
+      <div class="panel-inner">
+        <h2>Perkecil ukuran file PDF</h2>
+        <p class="lead">Setiap halaman digambar ulang sebagai gambar dengan resolusi/kualitas yang dipilih. Paling efektif untuk PDF hasil scan atau yang banyak gambarnya.</p>
+        <div id="compressFileName" style="font-family:var(--mono);font-size:13px;color:#6b6558;"></div>
+        <div class="note">Catatan: karena halaman diubah jadi gambar, teks di dalamnya tidak lagi bisa di-select/copy setelah di-compress. Kalau PDF-mu murni teks (bukan hasil scan), ukurannya mungkin sudah kecil dan tidak perlu di-compress.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CONVERT PANEL ================= -->
+  <section class="panel" id="panel-convert">
+    <div class="tool-toolbar">
+      <select class="tool" id="convType">
+        <option value="docx2pdf">Word (.docx) → PDF</option>
+        <option value="xlsx2pdf">Excel (.xlsx) → PDF</option>
+        <option value="pdf2doc">PDF → Word (.doc)</option>
+        <option value="pdf2xlsx">PDF → Excel (.xlsx)</option>
+      </select>
+      <button class="tool" id="convPickBtn">Pilih File</button>
+      <input type="file" id="convFileInput" hidden>
+      <div class="toolbar-spacer"></div>
+      <button class="tool primary" id="convGoBtn" disabled>Konversi &amp; Unduh</button>
+    </div>
+    <div class="panel-simple">
+      <div class="panel-inner">
+        <h2>Konversi Word / Excel / PDF</h2>
+        <p class="lead">Pilih jenis konversi, pilih file, lalu unduh hasilnya. Semua diproses di browser.</p>
+        <div id="convFileName" style="font-family:var(--mono);font-size:13px;color:#6b6558;"></div>
+        <div class="note" id="convNote"></div>
+      </div>
+    </div>
+  </section>
+
 </div>
 
 <div id="whiteoutBox"></div>
 <div id="hint"></div>
+<div id="busyOverlay"><div id="busyBox">Memproses...</div></div>
 
 <script>
-const { PDFDocument, rgb, StandardFonts } = PDFLib;
+/* ================= Shared utilities ================= */
+const { PDFDocument, rgb, StandardFonts, degrees } = PDFLib;
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
+const hint = document.getElementById('hint');
+function showHint(msg){
+  hint.textContent = msg;
+  hint.classList.add('show');
+  clearTimeout(showHint._t);
+  showHint._t = setTimeout(()=>hint.classList.remove('show'), 3200);
+}
+
+const busyOverlay = document.getElementById('busyOverlay');
+const busyBox = document.getElementById('busyBox');
+function setBusy(on, msg){
+  busyBox.textContent = msg || 'Memproses...';
+  busyOverlay.classList.toggle('show', !!on);
+}
+
+function downloadBlob(bytes, mime, filename){
+  const blob = new Blob([bytes], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function fmtBytes(n){
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(2) + ' MB';
+}
+
+/* ================= Tab switching ================= */
+document.querySelectorAll('.navtab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.navtab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* =====================================================
+   EDITOR (edit text / add text / add image / whiteout)
+   ===================================================== */
 const fileInput = document.getElementById('fileInput');
 const imgInput = document.getElementById('imgInput');
 const workspace = document.getElementById('workspace');
@@ -280,7 +543,6 @@ const btnDownload = document.getElementById('btnDownload');
 const fontColorInput = document.getElementById('fontColor');
 const fontSizeInput = document.getElementById('fontSize');
 const pageInfo = document.getElementById('pageInfo');
-const hint = document.getElementById('hint');
 const whiteoutBox = document.getElementById('whiteoutBox');
 
 let originalBytes = null;
@@ -289,13 +551,6 @@ let pages = []; // {canvas, wrap, overlay, elements:[], textItems:[], pdfWidth, 
 let mode = null; // 'text' | 'editExisting' | 'whiteout' | 'image'
 let selectedElm = null;
 let pendingImageDataUrl = null;
-
-function showHint(msg){
-  hint.textContent = msg;
-  hint.classList.add('show');
-  clearTimeout(showHint._t);
-  showHint._t = setTimeout(()=>hint.classList.remove('show'), 2600);
-}
 
 document.getElementById('btnUpload').onclick = ()=>fileInput.click();
 document.getElementById('btnUpload2').onclick = ()=>fileInput.click();
@@ -351,8 +606,6 @@ async function loadPdf(bytes){
       index: i-1
     };
 
-    // Extract original text runs + their on-screen bounding boxes so the
-    // "Edit Teks Asli" tool can detect what the user clicked on.
     try{
       const textContent = await page.getTextContent();
       for(const item of textContent.items){
@@ -362,16 +615,11 @@ async function loadPdf(bytes){
         const left = tx[4];
         const top = tx[5] - heightPx;
         const widthPx = item.width * scale;
-        pageData.textItems.push({
-          str: item.str,
-          x: left, y: top,
-          w: widthPx, h: heightPx
-        });
+        pageData.textItems.push({ str: item.str, x: left, y: top, w: widthPx, h: heightPx });
       }
     }catch(err){ console.warn('Tidak bisa membaca teks asli halaman', i, err); }
 
     pages.push(pageData);
-
     overlay.addEventListener('mousedown', (ev)=>onOverlayMouseDown(ev, pageData));
   }
 
@@ -383,7 +631,6 @@ async function loadPdf(bytes){
   showHint('PDF dimuat. Pilih alat di toolbar lalu klik pada halaman.');
 }
 
-/* ---------- Toolbar mode toggling ---------- */
 function setMode(newMode){
   mode = (mode===newMode) ? null : newMode;
   [btnText, btnEditExisting, btnWhiteout, btnImage].forEach(b=>b.classList.remove('active'));
@@ -395,10 +642,7 @@ function setMode(newMode){
 btnText.onclick = ()=> setMode('text');
 btnEditExisting.onclick = ()=> setMode('editExisting');
 btnWhiteout.onclick = ()=> setMode('whiteout');
-btnImage.onclick = ()=>{
-  imgInput.value = '';
-  imgInput.click();
-};
+btnImage.onclick = ()=>{ imgInput.value=''; imgInput.click(); };
 imgInput.addEventListener('change', (e)=>{
   const file = e.target.files[0];
   if(!file) return;
@@ -411,22 +655,10 @@ imgInput.addEventListener('change', (e)=>{
   reader.readAsDataURL(file);
 });
 
-function findTextItemAt(pageData, x, y){
-  // search from topmost/last item first (later items are often drawn on top)
-  for(let i = pageData.textItems.length-1; i>=0; i--){
-    const it = pageData.textItems[i];
-    if(x >= it.x-2 && x <= it.x+it.w+2 && y >= it.y-2 && y <= it.y+it.h+2){
-      return it;
-    }
-  }
-  return null;
-}
-
-/* ---------- Placing / drawing on a page ---------- */
 let dragStart = null;
 
 function onOverlayMouseDown(ev, pageData){
-  if(ev.target !== pageData.overlay) return; // clicked an existing element, ignore here
+  if(ev.target !== pageData.overlay) return;
   const rect = pageData.overlay.getBoundingClientRect();
   const x = ev.clientX - rect.left;
   const y = ev.clientY - rect.top;
@@ -435,11 +667,11 @@ function onOverlayMouseDown(ev, pageData){
     createTextElement(pageData, x, y);
     setMode(null);
   } else if(mode === 'editExisting'){
-    const hit = findTextItemAt(pageData, x, y);
-    if(hit){
+    const hitTxt = findTextItemAt(pageData, x, y);
+    if(hitTxt){
       const pad = 2;
-      createRectElement(pageData, hit.x-pad, hit.y-pad, hit.w+pad*2, hit.h+pad*2);
-      createTextElement(pageData, hit.x, hit.y-1, hit.str, Math.round(hit.h*0.92));
+      createRectElement(pageData, hitTxt.x-pad, hitTxt.y-pad, hitTxt.w+pad*2, hitTxt.h+pad*2);
+      createTextElement(pageData, hitTxt.x, hitTxt.y-1, hitTxt.str, Math.round(hitTxt.h*0.92));
       showHint('Teks asli sudah ditutup — ubah tulisan di kotak yang muncul.');
     } else {
       showHint('Tidak ada teks terdeteksi di titik itu. Coba klik tepat di atas tulisan.');
@@ -461,6 +693,14 @@ function onOverlayMouseDown(ev, pageData){
   } else {
     deselectAll();
   }
+}
+
+function findTextItemAt(pageData, x, y){
+  for(let i = pageData.textItems.length-1; i>=0; i--){
+    const it = pageData.textItems[i];
+    if(x >= it.x-2 && x <= it.x+it.w+2 && y >= it.y-2 && y <= it.y+it.h+2) return it;
+  }
+  return null;
 }
 
 function onWhiteoutDrag(ev){
@@ -486,14 +726,12 @@ function onWhiteoutEnd(){
   if(dragStart && dragStart.current && dragStart.current.w > 4 && dragStart.current.h > 4){
     const {left, top, w, h} = dragStart.current;
     createRectElement(dragStart.pageData, left, top, w, h);
-    // immediately add an editable text on top for the replacement text
     createTextElement(dragStart.pageData, left+4, top+2);
   }
   dragStart = null;
   setMode(null);
 }
 
-/* ---------- Element creation ---------- */
 function baseElm(pageData, cls, opts={}){
   const el = document.createElement('div');
   el.className = 'elm ' + cls;
@@ -507,7 +745,6 @@ function baseElm(pageData, cls, opts={}){
   el.appendChild(del);
 
   if(opts.grip){
-    // dedicated drag handle so the text itself stays freely clickable/editable
     const grip = document.createElement('div');
     grip.className = 'grip';
     grip.textContent = '::';
@@ -550,7 +787,6 @@ function createTextElement(pageData, x, y, presetText, presetFontSizePx){
     inner.focus();
     selectElm(el);
     if(presetText){
-      // put cursor at the end of the prefilled text instead of selecting/replacing it
       const range = document.createRange();
       range.selectNodeContents(inner);
       range.collapse(false);
@@ -602,7 +838,7 @@ function createImageElement(pageData, x, y, dataUrl){
     return { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, dataUrl };
   }};
   pageData.elements.push(data);
-  el.addEventListener('mousedown', ()=>selectElm(el));
+  el.addEventListener('mousedown', (e)=>{ selectElm(el); e.stopPropagation(); });
   selectElm(el);
   return el;
 }
@@ -627,7 +863,6 @@ document.addEventListener('keydown', (e)=>{
   }
 });
 
-/* ---------- Drag & resize ---------- */
 function makeDraggable(el, resizeHandle, dragHandle, pageData, opts={}){
   let dragging = false, resizing = false, startX, startY, startLeft, startTop, startW, startH, startFontSize;
 
@@ -657,7 +892,6 @@ function makeDraggable(el, resizeHandle, dragHandle, pageData, opts={}){
       el.style.top = (startTop + (e.clientY-startY)) + 'px';
     } else if(resizing){
       if(opts.isText){
-        // for text: resize handle scales font size, box stays auto-fit to content
         const delta = (e.clientX-startX) + (e.clientY-startY);
         const newSize = Math.max(6, Math.round(startFontSize + delta/6));
         el.querySelector('.text-inner').style.fontSize = newSize + 'px';
@@ -670,13 +904,17 @@ function makeDraggable(el, resizeHandle, dragHandle, pageData, opts={}){
   document.addEventListener('mouseup', ()=>{ dragging=false; resizing=false; });
 }
 
-/* ---------- Export to PDF ---------- */
 function hexToRgb01(hex){
   const h = hex.replace('#','');
   const r = parseInt(h.substring(0,2),16)/255;
   const g = parseInt(h.substring(2,4),16)/255;
   const b = parseInt(h.substring(4,6),16)/255;
   return {r,g,b};
+}
+function rgbStringToHex(rgbStr){
+  const m = rgbStr.match(/\d+/g);
+  if(!m) return '#000000';
+  return '#' + m.slice(0,3).map(n=>parseInt(n).toString(16).padStart(2,'0')).join('');
 }
 
 btnDownload.onclick = async ()=>{
@@ -690,7 +928,7 @@ btnDownload.onclick = async ()=>{
 
     for(const pageData of pages){
       const pdfPage = pdfPages[pageData.index];
-      const renderScale = pageData.canvas.width / pageData.pdfWidth; // px per pdf-point
+      const renderScale = pageData.canvas.width / pageData.pdfWidth;
       const pageH = pageData.pdfHeight;
 
       for(const elmData of pageData.elements){
@@ -702,33 +940,22 @@ btnDownload.onclick = async ()=>{
         const pdfYbottom = pageH - (pdfYtop + pdfH);
 
         if(elmData.type === 'rect'){
-          pdfPage.drawRectangle({
-            x: pdfX, y: pdfYbottom, width: pdfW, height: pdfH,
-            color: rgb(1,1,1)
-          });
+          pdfPage.drawRectangle({ x: pdfX, y: pdfYbottom, width: pdfW, height: pdfH, color: rgb(1,1,1) });
         } else if(elmData.type === 'image'){
           const isPng = s.dataUrl.startsWith('data:image/png');
           const base64 = s.dataUrl.split(',')[1];
           const imgBytes = Uint8Array.from(atob(base64), c=>c.charCodeAt(0));
           const embedded = isPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes);
-          pdfPage.drawImage(embedded, {
-            x: pdfX, y: pdfYbottom, width: pdfW, height: pdfH
-          });
+          pdfPage.drawImage(embedded, { x: pdfX, y: pdfYbottom, width: pdfW, height: pdfH });
         } else if(elmData.type === 'text'){
           if(!s.text || !s.text.trim()) continue;
           const fontSizePt = s.fontSize / renderScale;
           const {r,g,b} = hexToRgb01(s.color.match(/^#/) ? s.color : rgbStringToHex(s.color));
           const lines = s.text.split('\n');
-          let cursorY = pageH - (pdfYtop) - fontSizePt*0.9; // first line baseline approx
+          let cursorY = pageH - (pdfYtop) - fontSizePt*0.9;
           for(const line of lines){
             if(line.length){
-              pdfPage.drawText(line, {
-                x: pdfX,
-                y: cursorY,
-                size: fontSizePt,
-                font: helv,
-                color: rgb(r,g,b)
-              });
+              pdfPage.drawText(line, { x: pdfX, y: cursorY, size: fontSizePt, font: helv, color: rgb(r,g,b) });
             }
             cursorY -= fontSizePt*1.25;
           }
@@ -737,13 +964,7 @@ btnDownload.onclick = async ()=>{
     }
 
     const outBytes = await pdfDoc.save();
-    const blob = new Blob([outBytes], {type:'application/pdf'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'edited.pdf';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(outBytes, 'application/pdf', 'edited.pdf');
   }catch(err){
     console.error(err);
     showHint('Terjadi kesalahan saat menyimpan PDF.');
@@ -752,10 +973,420 @@ btnDownload.onclick = async ()=>{
   btnDownload.disabled = false;
 };
 
-function rgbStringToHex(rgbStr){
-  const m = rgbStr.match(/\d+/g);
-  if(!m) return '#000000';
-  return '#' + m.slice(0,3).map(n=>parseInt(n).toString(16).padStart(2,'0')).join('');
+/* =====================================================
+   MERGE PDF
+   ===================================================== */
+const mergeFileInput = document.getElementById('mergeFileInput');
+const mergeAddFiles = document.getElementById('mergeAddFiles');
+const mergeDropArea = document.getElementById('mergeDropArea');
+const mergeList = document.getElementById('mergeList');
+const mergeBtn = document.getElementById('mergeBtn');
+let mergeFiles = []; // {name, bytes}
+
+mergeAddFiles.onclick = ()=>mergeFileInput.click();
+mergeDropArea.onclick = ()=>mergeFileInput.click();
+mergeDropArea.addEventListener('dragover', e=>{ e.preventDefault(); mergeDropArea.style.borderColor='var(--accent)'; });
+mergeDropArea.addEventListener('dragleave', ()=>{ mergeDropArea.style.borderColor=''; });
+mergeDropArea.addEventListener('drop', async e=>{
+  e.preventDefault();
+  mergeDropArea.style.borderColor='';
+  await addMergeFiles(e.dataTransfer.files);
+});
+mergeFileInput.addEventListener('change', async e=>{
+  await addMergeFiles(e.target.files);
+  mergeFileInput.value='';
+});
+
+async function addMergeFiles(fileList){
+  for(const f of fileList){
+    if(f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) continue;
+    const bytes = await f.arrayBuffer();
+    mergeFiles.push({name:f.name, bytes});
+  }
+  renderMergeList();
+}
+
+function renderMergeList(){
+  mergeList.innerHTML = '';
+  mergeFiles.forEach((f, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `
+      <span style="font-family:var(--mono);font-size:11px;color:#7a7568;">${idx+1}</span>
+      <span class="fname">${f.name}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:#9aa0a8;">${fmtBytes(f.bytes.byteLength)}</span>
+      <button data-act="up">↑</button>
+      <button data-act="down">↓</button>
+      <button data-act="remove">Hapus</button>
+    `;
+    row.querySelector('[data-act="up"]').onclick = ()=>{ if(idx>0){ [mergeFiles[idx-1],mergeFiles[idx]]=[mergeFiles[idx],mergeFiles[idx-1]]; renderMergeList(); } };
+    row.querySelector('[data-act="down"]').onclick = ()=>{ if(idx<mergeFiles.length-1){ [mergeFiles[idx+1],mergeFiles[idx]]=[mergeFiles[idx],mergeFiles[idx+1]]; renderMergeList(); } };
+    row.querySelector('[data-act="remove"]').onclick = ()=>{ mergeFiles.splice(idx,1); renderMergeList(); };
+    mergeList.appendChild(row);
+  });
+  mergeBtn.disabled = mergeFiles.length < 2;
+}
+
+mergeBtn.onclick = async ()=>{
+  setBusy(true, 'Menggabungkan PDF...');
+  try{
+    const outDoc = await PDFDocument.create();
+    for(const f of mergeFiles){
+      const src = await PDFDocument.load(f.bytes.slice(0));
+      const copied = await outDoc.copyPages(src, src.getPageIndices());
+      copied.forEach(p=>outDoc.addPage(p));
+    }
+    const bytes = await outDoc.save();
+    downloadBlob(bytes, 'application/pdf', 'gabungan.pdf');
+  }catch(err){
+    console.error(err);
+    showHint('Gagal menggabungkan PDF. Pastikan semua file valid.');
+  }
+  setBusy(false);
+};
+
+/* =====================================================
+   ROTATE PAGES
+   ===================================================== */
+const rotateUploadBtn = document.getElementById('rotateUploadBtn');
+const rotateFileInput = document.getElementById('rotateFileInput');
+const rotateThumbs = document.getElementById('rotateThumbs');
+const rotateSaveBtn = document.getElementById('rotateSaveBtn');
+const rotateInfo = document.getElementById('rotateInfo');
+let rotateBytes = null;
+let rotatePagesData = []; // {baseRotation, delta, canvas}
+
+rotateUploadBtn.onclick = ()=>rotateFileInput.click();
+rotateFileInput.addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  rotateBytes = await file.arrayBuffer();
+  await loadRotatePreview(rotateBytes.slice(0));
+});
+
+async function loadRotatePreview(bytes){
+  rotateThumbs.innerHTML = '';
+  rotatePagesData = [];
+  const pdf = await pdfjsLib.getDocument({data:bytes}).promise;
+  rotateInfo.textContent = `${pdf.numPages} halaman`;
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const baseRotation = page.rotate || 0;
+    const entry = {baseRotation, delta:0};
+    rotatePagesData.push(entry);
+
+    const card = document.createElement('div');
+    card.className = 'thumb-card';
+    const canvas = document.createElement('canvas');
+    const lbl = document.createElement('div');
+    lbl.className = 'lbl';
+    lbl.textContent = 'Halaman ' + i;
+    const btnRow = document.createElement('div');
+    btnRow.className = 'rot-btns';
+    const btnL = document.createElement('button'); btnL.textContent = '⟲ 90°';
+    const btnR = document.createElement('button'); btnR.textContent = '⟳ 90°';
+    btnRow.appendChild(btnL); btnRow.appendChild(btnR);
+    card.appendChild(canvas); card.appendChild(lbl); card.appendChild(btnRow);
+    rotateThumbs.appendChild(card);
+
+    async function renderThumb(){
+      const vp = page.getViewport({scale:0.4, rotation:(entry.baseRotation+entry.delta+360)%360});
+      canvas.width = vp.width; canvas.height = vp.height;
+      const ctx = canvas.getContext('2d');
+      await page.render({canvasContext:ctx, viewport:vp}).promise;
+    }
+    btnL.onclick = ()=>{ entry.delta = (entry.delta - 90 + 360) % 360; renderThumb(); };
+    btnR.onclick = ()=>{ entry.delta = (entry.delta + 90) % 360; renderThumb(); };
+    await renderThumb();
+  }
+  rotateSaveBtn.disabled = false;
+}
+
+rotateSaveBtn.onclick = async ()=>{
+  if(!rotateBytes) return;
+  setBusy(true, 'Menyimpan rotasi...');
+  try{
+    const pdfDoc = await PDFDocument.load(rotateBytes.slice(0));
+    const pdfPages = pdfDoc.getPages();
+    rotatePagesData.forEach((entry, i)=>{
+      const newAngle = (entry.baseRotation + entry.delta + 360) % 360;
+      pdfPages[i].setRotation(degrees(newAngle));
+    });
+    const bytes = await pdfDoc.save();
+    downloadBlob(bytes, 'application/pdf', 'rotated.pdf');
+  }catch(err){
+    console.error(err);
+    showHint('Gagal menyimpan rotasi halaman.');
+  }
+  setBusy(false);
+};
+
+/* =====================================================
+   COMPRESS
+   ===================================================== */
+const compressUploadBtn = document.getElementById('compressUploadBtn');
+const compressFileInput = document.getElementById('compressFileInput');
+const compressBtn = document.getElementById('compressBtn');
+const compressLevel = document.getElementById('compressLevel');
+const compressFileName = document.getElementById('compressFileName');
+let compressBytes = null;
+let compressFileTitle = 'document';
+
+const COMPRESS_PRESETS = {
+  high:   {renderScale:2.0, quality:0.85},
+  medium: {renderScale:1.3, quality:0.7},
+  low:    {renderScale:0.9, quality:0.5}
+};
+
+compressUploadBtn.onclick = ()=>compressFileInput.click();
+compressFileInput.addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  compressBytes = await file.arrayBuffer();
+  compressFileTitle = file.name.replace(/\.pdf$/i,'');
+  compressFileName.textContent = `${file.name} — ${fmtBytes(compressBytes.byteLength)}`;
+  compressBtn.disabled = false;
+});
+
+compressBtn.onclick = async ()=>{
+  if(!compressBytes) return;
+  setBusy(true, 'Mengompres PDF (merender ulang tiap halaman)...');
+  try{
+    const preset = COMPRESS_PRESETS[compressLevel.value];
+    const pdf = await pdfjsLib.getDocument({data: compressBytes.slice(0)}).promise;
+    const outDoc = await PDFDocument.create();
+
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const unscaled = page.getViewport({scale:1});
+      const viewport = page.getViewport({scale: preset.renderScale});
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      await page.render({canvasContext:ctx, viewport}).promise;
+      const jpegData = canvas.toDataURL('image/jpeg', preset.quality);
+      const base64 = jpegData.split(',')[1];
+      const imgBytes = Uint8Array.from(atob(base64), c=>c.charCodeAt(0));
+      const embedded = await outDoc.embedJpg(imgBytes);
+      const outPage = outDoc.addPage([unscaled.width, unscaled.height]);
+      outPage.drawImage(embedded, {x:0, y:0, width:unscaled.width, height:unscaled.height});
+    }
+
+    const bytes = await outDoc.save();
+    showHint(`Selesai: ${fmtBytes(compressBytes.byteLength)} → ${fmtBytes(bytes.byteLength)}`);
+    downloadBlob(bytes, 'application/pdf', compressFileTitle + '-compressed.pdf');
+  }catch(err){
+    console.error(err);
+    showHint('Gagal mengompres PDF.');
+  }
+  setBusy(false);
+};
+
+/* =====================================================
+   CONVERT (Word/Excel <-> PDF)
+   ===================================================== */
+const convType = document.getElementById('convType');
+const convPickBtn = document.getElementById('convPickBtn');
+const convFileInput = document.getElementById('convFileInput');
+const convGoBtn = document.getElementById('convGoBtn');
+const convFileName = document.getElementById('convFileName');
+const convNote = document.getElementById('convNote');
+let convFile = null;
+
+const CONV_NOTES = {
+  docx2pdf: 'Format dan gaya dasar (paragraf, bold/italic, gambar) akan mengikuti tampilan dokumen Word, dirender sebagai halaman PDF. Layout yang sangat kompleks mungkin tidak 100% identik.',
+  xlsx2pdf: 'Setiap sheet dijadikan tabel di halaman PDF (orientasi lanskap). Cocok untuk data tabular; format sel yang rumit (warna, merge cell) tidak sepenuhnya dipertahankan.',
+  pdf2doc: 'Teks diekstrak per halaman dan disusun jadi paragraf di file Word (.doc). Tata letak asli (kolom, tabel, posisi presisi) tidak dipertahankan — cocok untuk mengambil ulang isi teksnya.',
+  pdf2xlsx: 'Teks diekstrak dan dikelompokkan jadi baris/kolom berdasarkan posisi di halaman (perkiraan). Cocok untuk PDF tabel yang sederhana; tabel kompleks mungkin perlu dirapikan manual setelah dibuka di Excel.'
+};
+const CONV_ACCEPT = {
+  docx2pdf: '.docx',
+  xlsx2pdf: '.xlsx,.xls',
+  pdf2doc: 'application/pdf',
+  pdf2xlsx: 'application/pdf'
+};
+
+function updateConvNote(){
+  convNote.textContent = CONV_NOTES[convType.value];
+  convFileInput.accept = CONV_ACCEPT[convType.value];
+  convFile = null;
+  convFileName.textContent = '';
+  convGoBtn.disabled = true;
+}
+convType.addEventListener('change', updateConvNote);
+updateConvNote();
+
+convPickBtn.onclick = ()=>convFileInput.click();
+convFileInput.addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  convFile = file;
+  convFileName.textContent = `${file.name} — ${fmtBytes(file.size)}`;
+  convGoBtn.disabled = false;
+});
+
+convGoBtn.onclick = async ()=>{
+  if(!convFile) return;
+  setBusy(true, 'Mengonversi file...');
+  try{
+    if(convType.value === 'docx2pdf') await docxToPdf(convFile);
+    else if(convType.value === 'xlsx2pdf') await xlsxToPdf(convFile);
+    else if(convType.value === 'pdf2doc') await pdfToDoc(convFile);
+    else if(convType.value === 'pdf2xlsx') await pdfToXlsx(convFile);
+  }catch(err){
+    console.error(err);
+    showHint('Gagal mengonversi file. Pastikan formatnya sesuai.');
+  }
+  setBusy(false);
+};
+
+/* ---- Word (.docx) -> PDF ---- */
+async function docxToPdf(file){
+  const buf = await file.arrayBuffer();
+  const { value: html } = await mammoth.convertToHtml({arrayBuffer: buf});
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;padding:48px;background:#fff;font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#111;';
+  container.innerHTML = html || '<p><em>(Dokumen kosong)</em></p>';
+  document.body.appendChild(container);
+  await new Promise(r=>setTimeout(r, 80));
+  const canvas = await html2canvas(container, {scale:2, useCORS:true, backgroundColor:'#ffffff'});
+  document.body.removeChild(container);
+
+  const { jsPDF } = window.jspdf;
+  const pageWpt = 595.28, pageHpt = 841.89; // A4 pt
+  const pdf = new jsPDF({unit:'pt', format:'a4'});
+  canvasToPdfPages(canvas, pdf, pageWpt, pageHpt);
+  const bytes = pdf.output('arraybuffer');
+  downloadBlob(bytes, 'application/pdf', file.name.replace(/\.docx?$/i,'') + '.pdf');
+}
+
+function canvasToPdfPages(canvas, pdf, pageWpt, pageHpt){
+  const ratio = canvas.width / pageWpt;
+  const pageHpx = pageHpt * ratio;
+  let renderedY = 0;
+  let first = true;
+  while(renderedY < canvas.height){
+    const sliceH = Math.min(pageHpx, canvas.height - renderedY);
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = sliceH;
+    const ctx = sliceCanvas.getContext('2d');
+    ctx.drawImage(canvas, 0, renderedY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+    const imgData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+    if(!first) pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, 0, pageWpt, sliceH/ratio);
+    renderedY += sliceH;
+    first = false;
+  }
+}
+
+/* ---- Excel (.xlsx) -> PDF ---- */
+async function xlsxToPdf(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({orientation:'landscape', unit:'pt', format:'a4'});
+
+  wb.SheetNames.forEach((name, idx)=>{
+    const ws = wb.Sheets[name];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''});
+    if(idx>0) pdf.addPage();
+    pdf.setFontSize(12);
+    pdf.text(name, 24, 24);
+    pdf.autoTable({
+      startY: 34,
+      head: rows.length ? [rows[0]] : [[]],
+      body: rows.slice(1),
+      styles:{fontSize:8, cellPadding:3, overflow:'linebreak'},
+      theme:'grid'
+    });
+  });
+
+  const bytes = pdf.output('arraybuffer');
+  downloadBlob(bytes, 'application/pdf', file.name.replace(/\.xlsx?$/i,'') + '.pdf');
+}
+
+/* ---- PDF -> Word (.doc, HTML-based, Word-compatible) ---- */
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function groupItemsIntoLines(items){
+  const rows = {};
+  items.forEach(it=>{
+    if(!it.str || !it.str.trim()) return;
+    const key = Math.round(it.transform[5]/3)*3;
+    if(!rows[key]) rows[key]=[];
+    rows[key].push(it);
+  });
+  const keys = Object.keys(rows).map(Number).sort((a,b)=>b-a);
+  return keys.map(k => rows[k].sort((a,b)=>a.transform[4]-b.transform[4]).map(it=>it.str).join(' '));
+}
+
+async function pdfToDoc(file){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  let bodyHtml = '';
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    const lines = groupItemsIntoLines(tc.items);
+    bodyHtml += lines.map(l => `<p>${escapeHtml(l)}</p>`).join('\n');
+    if(i < pdf.numPages) bodyHtml += '<br clear="all" style="page-break-before:always">';
+  }
+  const fullHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Dokumen</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>body{font-family:Calibri,Arial,sans-serif;font-size:12pt;} p{margin:0 0 8pt;}</style>
+</head><body>${bodyHtml}</body></html>`;
+  const blob = new Blob(['\ufeff', fullHtml], {type:'application/msword'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = file.name.replace(/\.pdf$/i,'') + '.doc'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ---- PDF -> Excel (.xlsx) ---- */
+function lineToCells(itemsSortedByX){
+  const cells = [];
+  let current = '';
+  let lastEnd = null;
+  itemsSortedByX.forEach(it=>{
+    const x0 = it.transform[4];
+    const gapThreshold = (it.height || 10) * 1.6;
+    if(lastEnd!==null && (x0-lastEnd) > gapThreshold){
+      cells.push(current.trim());
+      current = '';
+    }
+    current += it.str;
+    lastEnd = x0 + it.width;
+  });
+  if(current.trim()) cells.push(current.trim());
+  return cells;
+}
+
+async function pdfToXlsx(file){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+  const wb = XLSX.utils.book_new();
+
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    const rows = {};
+    tc.items.forEach(it=>{
+      if(!it.str || !it.str.trim()) return;
+      const key = Math.round(it.transform[5]/3)*3;
+      if(!rows[key]) rows[key]=[];
+      rows[key].push(it);
+    });
+    const keys = Object.keys(rows).map(Number).sort((a,b)=>b-a);
+    const aoa = keys.map(k => lineToCells(rows[k].sort((a,b)=>a.transform[4]-b.transform[4])));
+    const ws = XLSX.utils.aoa_to_sheet(aoa.length ? aoa : [['(kosong)']]);
+    XLSX.utils.book_append_sheet(wb, ws, ('Hal ' + i).slice(0,31));
+  }
+
+  const out = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  downloadBlob(out, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', file.name.replace(/\.pdf$/i,'') + '.xlsx');
 }
 </script>
 </body>
