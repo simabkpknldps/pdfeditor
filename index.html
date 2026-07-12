@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDF Editor Abu Ayyub</title>
+<title>PDF Editor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -141,15 +141,20 @@
   }
   .elm.selected{border-color:var(--accent);}
   .elm.text-elm{
+    display:inline-block;
+    width:auto;
+    max-width:none;
+    min-width:14px;
+    min-height:1.2em;
     padding:2px 4px;
     line-height:1.25;
-    white-space:pre-wrap;
-    word-break:break-word;
+    white-space:pre;
+    cursor:text;
     font-family:'Helvetica', Arial, sans-serif;
   }
-  .elm.text-elm[contenteditable="true"]{
-    cursor:text;
-    background:rgba(255,255,255,.6);
+  .elm.text-elm[contenteditable="true"]:focus{
+    background:rgba(255,255,255,.65);
+    outline:none;
   }
   .elm.rect-elm{
     background:#ffffff;
@@ -165,6 +170,22 @@
     display:none;
   }
   .elm.selected .handle{display:block;}
+  .grip{
+    position:absolute;
+    left:-16px; top:50%;
+    transform:translateY(-50%);
+    width:16px;height:22px;
+    background:var(--ink);
+    color:#fff;
+    border-radius:4px 0 0 4px;
+    cursor:move;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    font-size:11px;
+    letter-spacing:-1px;
+  }
+  .elm.selected .grip{display:flex;}
   .del-btn{
     position:absolute;
     top:-11px; right:-11px;
@@ -415,14 +436,14 @@ function onWhiteoutEnd(){
     const {left, top, w, h} = dragStart.current;
     createRectElement(dragStart.pageData, left, top, w, h);
     // immediately add an editable text on top for the replacement text
-    createTextElement(dragStart.pageData, left+4, top+2, w-8, h-4);
+    createTextElement(dragStart.pageData, left+4, top+2);
   }
   dragStart = null;
   setMode(null);
 }
 
 /* ---------- Element creation ---------- */
-function baseElm(pageData, cls){
+function baseElm(pageData, cls, opts={}){
   const el = document.createElement('div');
   el.className = 'elm ' + cls;
   const handle = document.createElement('div');
@@ -433,27 +454,34 @@ function baseElm(pageData, cls){
   del.onclick = (e)=>{ e.stopPropagation(); pageData.overlay.removeChild(el); pageData.elements = pageData.elements.filter(x=>x.dom!==el); };
   el.appendChild(handle);
   el.appendChild(del);
-  makeDraggable(el, handle, pageData);
+
+  if(opts.grip){
+    // dedicated drag handle so the text itself stays freely clickable/editable
+    const grip = document.createElement('div');
+    grip.className = 'grip';
+    grip.textContent = '::';
+    el.appendChild(grip);
+    makeDraggable(el, handle, grip, pageData, opts);
+  } else {
+    makeDraggable(el, handle, el, pageData, opts);
+  }
   pageData.overlay.appendChild(el);
   return el;
 }
 
-function createTextElement(pageData, x, y, w, h){
-  const el = baseElm(pageData, 'text-elm');
+function createTextElement(pageData, x, y){
+  const el = baseElm(pageData, 'text-elm', {grip:true, isText:true});
   const size = parseInt(fontSizeInput.value)||16;
   const color = fontColorInput.value;
   el.style.left = x+'px';
   el.style.top = y+'px';
-  el.style.width = (w || 220)+'px';
-  el.style.minHeight = (h || size*1.4)+'px';
   el.style.fontSize = size+'px';
   el.style.color = color;
   el.setAttribute('contenteditable','true');
   el.dataset.type='text';
+  if(!el.textContent) el.textContent = '';
 
   const data = {dom: el, type:'text', getState(){
-    const r = el.getBoundingClientRect();
-    const or = pageData.overlay.getBoundingClientRect();
     return {
       x: el.offsetLeft, y: el.offsetTop,
       w: el.offsetWidth, h: el.offsetHeight,
@@ -464,10 +492,8 @@ function createTextElement(pageData, x, y, w, h){
   }};
   pageData.elements.push(data);
 
-  el.addEventListener('mousedown', (e)=>{ selectElm(el); });
-  el.addEventListener('dblclick', (e)=>{ el.focus(); });
+  el.addEventListener('mousedown', (e)=>{ selectElm(el); e.stopPropagation(); });
   setTimeout(()=>{ el.focus(); selectElm(el); }, 30);
-  el.addEventListener('input', ()=>{ /* live, nothing needed */ });
   return el;
 }
 
@@ -482,7 +508,7 @@ function createRectElement(pageData, x, y, w, h){
     return { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
   }};
   pageData.elements.push(data);
-  el.addEventListener('mousedown', ()=>selectElm(el));
+  el.addEventListener('mousedown', (e)=>{ selectElm(el); e.stopPropagation(); });
   selectElm(el);
   return el;
 }
@@ -533,23 +559,24 @@ document.addEventListener('keydown', (e)=>{
 });
 
 /* ---------- Drag & resize ---------- */
-function makeDraggable(el, handle, pageData){
-  let dragging = false, resizing = false, startX, startY, startLeft, startTop, startW, startH;
+function makeDraggable(el, resizeHandle, dragHandle, pageData, opts={}){
+  let dragging = false, resizing = false, startX, startY, startLeft, startTop, startW, startH, startFontSize;
 
-  el.addEventListener('mousedown', (e)=>{
-    if(e.target === handle) return;
-    if(el.isContentEditable && document.activeElement===el) return; // allow text caret placement
+  dragHandle.addEventListener('mousedown', (e)=>{
+    if(e.target === resizeHandle) return;
     dragging = true;
     startX = e.clientX; startY = e.clientY;
     startLeft = el.offsetLeft; startTop = el.offsetTop;
     e.stopPropagation();
+    e.preventDefault();
     selectElm(el);
   });
 
-  handle.addEventListener('mousedown', (e)=>{
+  resizeHandle.addEventListener('mousedown', (e)=>{
     resizing = true;
     startX = e.clientX; startY = e.clientY;
     startW = el.offsetWidth; startH = el.offsetHeight;
+    startFontSize = parseFloat(el.style.fontSize) || 16;
     e.stopPropagation();
     e.preventDefault();
   });
@@ -559,10 +586,14 @@ function makeDraggable(el, handle, pageData){
       el.style.left = (startLeft + (e.clientX-startX)) + 'px';
       el.style.top = (startTop + (e.clientY-startY)) + 'px';
     } else if(resizing){
-      el.style.width = Math.max(20, startW + (e.clientX-startX)) + 'px';
-      el.style.height = Math.max(14, startH + (e.clientY-startY)) + 'px';
-      if(el.dataset.type==='text'){
-        // keep font size independent, just wrap
+      if(opts.isText){
+        // for text: resize handle scales font size, box stays auto-fit to content
+        const delta = (e.clientX-startX) + (e.clientY-startY);
+        const newSize = Math.max(6, Math.round(startFontSize + delta/6));
+        el.style.fontSize = newSize + 'px';
+      } else {
+        el.style.width = Math.max(20, startW + (e.clientX-startX)) + 'px';
+        el.style.height = Math.max(14, startH + (e.clientY-startY)) + 'px';
       }
     }
   });
@@ -618,17 +649,17 @@ btnDownload.onclick = async ()=>{
           const fontSizePt = s.fontSize / renderScale;
           const {r,g,b} = hexToRgb01(s.color.match(/^#/) ? s.color : rgbStringToHex(s.color));
           const lines = s.text.split('\n');
-          let cursorY = pageH - (pdfYtop) - fontSizePt; // first line baseline approx
+          let cursorY = pageH - (pdfYtop) - fontSizePt*0.9; // first line baseline approx
           for(const line of lines){
-            pdfPage.drawText(line, {
-              x: pdfX,
-              y: cursorY,
-              size: fontSizePt,
-              font: helv,
-              color: rgb(r,g,b),
-              maxWidth: pdfW,
-              lineHeight: fontSizePt*1.25
-            });
+            if(line.length){
+              pdfPage.drawText(line, {
+                x: pdfX,
+                y: cursorY,
+                size: fontSizePt,
+                font: helv,
+                color: rgb(r,g,b)
+              });
+            }
             cursorY -= fontSizePt*1.25;
           }
         }
