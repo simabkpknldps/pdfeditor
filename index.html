@@ -142,19 +142,22 @@
   .elm.selected{border-color:var(--accent);}
   .elm.text-elm{
     display:inline-block;
+    cursor:default;
+  }
+  .text-inner{
+    display:inline-block;
     width:auto;
-    max-width:none;
     min-width:14px;
     min-height:1.2em;
     padding:2px 4px;
     line-height:1.25;
     white-space:pre;
     cursor:text;
+    outline:none;
     font-family:'Helvetica', Arial, sans-serif;
   }
-  .elm.text-elm[contenteditable="true"]:focus{
+  .text-inner:focus{
     background:rgba(255,255,255,.65);
-    outline:none;
   }
   .elm.rect-elm{
     background:#ffffff;
@@ -236,6 +239,7 @@
   <input type="file" id="fileInput" accept="application/pdf">
 
   <button class="tool" id="btnText" disabled>+ Teks</button>
+  <button class="tool" id="btnEditExisting" disabled>✎ Edit Teks Asli</button>
   <button class="tool" id="btnWhiteout" disabled>Tutup Teks Lama</button>
   <button class="tool" id="btnImage" disabled>+ Gambar</button>
   <input type="file" id="imgInput" accept="image/*">
@@ -252,7 +256,7 @@
   <div id="dropzone">
     <div class="eyebrow">Editor PDF di browser</div>
     <h1>Buka file PDF untuk mulai edit</h1>
-    <p>Tambahkan teks baru, tutup &amp; ganti teks lama, atau sisipkan gambar. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
+    <p>Klik langsung pada teks asli untuk menggantinya, tambahkan teks/gambar baru, atau tutup teks lama secara manual. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
     <button id="btnUpload2">Pilih file PDF</button>
   </div>
 </div>
@@ -269,6 +273,7 @@ const imgInput = document.getElementById('imgInput');
 const workspace = document.getElementById('workspace');
 const dropzone = document.getElementById('dropzone');
 const btnText = document.getElementById('btnText');
+const btnEditExisting = document.getElementById('btnEditExisting');
 const btnWhiteout = document.getElementById('btnWhiteout');
 const btnImage = document.getElementById('btnImage');
 const btnDownload = document.getElementById('btnDownload');
@@ -280,8 +285,8 @@ const whiteoutBox = document.getElementById('whiteoutBox');
 
 let originalBytes = null;
 let scale = 1.5;
-let pages = []; // {canvas, wrap, overlay, elements:[], pdfWidth, pdfHeight}
-let mode = null; // 'text' | 'whiteout' | 'image'
+let pages = []; // {canvas, wrap, overlay, elements:[], textItems:[], pdfWidth, pdfHeight}
+let mode = null; // 'text' | 'editExisting' | 'whiteout' | 'image'
 let selectedElm = null;
 let pendingImageDataUrl = null;
 
@@ -340,16 +345,38 @@ async function loadPdf(bytes){
     const pageData = {
       canvas, wrap, overlay,
       elements: [],
+      textItems: [],
       pdfWidth: unscaled.width,
       pdfHeight: unscaled.height,
       index: i-1
     };
+
+    // Extract original text runs + their on-screen bounding boxes so the
+    // "Edit Teks Asli" tool can detect what the user clicked on.
+    try{
+      const textContent = await page.getTextContent();
+      for(const item of textContent.items){
+        if(!item.str || !item.str.trim()) continue;
+        const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+        const heightPx = Math.hypot(tx[2], tx[3]);
+        const left = tx[4];
+        const top = tx[5] - heightPx;
+        const widthPx = item.width * scale;
+        pageData.textItems.push({
+          str: item.str,
+          x: left, y: top,
+          w: widthPx, h: heightPx
+        });
+      }
+    }catch(err){ console.warn('Tidak bisa membaca teks asli halaman', i, err); }
+
     pages.push(pageData);
 
     overlay.addEventListener('mousedown', (ev)=>onOverlayMouseDown(ev, pageData));
   }
 
   btnText.disabled = false;
+  btnEditExisting.disabled = false;
   btnWhiteout.disabled = false;
   btnImage.disabled = false;
   btnDownload.disabled = false;
@@ -359,12 +386,14 @@ async function loadPdf(bytes){
 /* ---------- Toolbar mode toggling ---------- */
 function setMode(newMode){
   mode = (mode===newMode) ? null : newMode;
-  [btnText, btnWhiteout, btnImage].forEach(b=>b.classList.remove('active'));
+  [btnText, btnEditExisting, btnWhiteout, btnImage].forEach(b=>b.classList.remove('active'));
   if(mode==='text') { btnText.classList.add('active'); showHint('Klik di mana saja pada halaman untuk menambah teks.'); }
+  if(mode==='editExisting') { btnEditExisting.classList.add('active'); showHint('Klik tepat di atas teks asli yang ingin diubah.'); }
   if(mode==='whiteout') { btnWhiteout.classList.add('active'); showHint('Klik & seret untuk menutup teks lama, lalu ketik teks baru di atasnya.'); }
   if(mode==='image') { btnImage.classList.add('active'); }
 }
 btnText.onclick = ()=> setMode('text');
+btnEditExisting.onclick = ()=> setMode('editExisting');
 btnWhiteout.onclick = ()=> setMode('whiteout');
 btnImage.onclick = ()=>{
   imgInput.value = '';
@@ -382,6 +411,17 @@ imgInput.addEventListener('change', (e)=>{
   reader.readAsDataURL(file);
 });
 
+function findTextItemAt(pageData, x, y){
+  // search from topmost/last item first (later items are often drawn on top)
+  for(let i = pageData.textItems.length-1; i>=0; i--){
+    const it = pageData.textItems[i];
+    if(x >= it.x-2 && x <= it.x+it.w+2 && y >= it.y-2 && y <= it.y+it.h+2){
+      return it;
+    }
+  }
+  return null;
+}
+
 /* ---------- Placing / drawing on a page ---------- */
 let dragStart = null;
 
@@ -393,6 +433,17 @@ function onOverlayMouseDown(ev, pageData){
 
   if(mode === 'text'){
     createTextElement(pageData, x, y);
+    setMode(null);
+  } else if(mode === 'editExisting'){
+    const hit = findTextItemAt(pageData, x, y);
+    if(hit){
+      const pad = 2;
+      createRectElement(pageData, hit.x-pad, hit.y-pad, hit.w+pad*2, hit.h+pad*2);
+      createTextElement(pageData, hit.x, hit.y-1, hit.str, Math.round(hit.h*0.92));
+      showHint('Teks asli sudah ditutup — ubah tulisan di kotak yang muncul.');
+    } else {
+      showHint('Tidak ada teks terdeteksi di titik itu. Coba klik tepat di atas tulisan.');
+    }
     setMode(null);
   } else if(mode === 'image' && pendingImageDataUrl){
     createImageElement(pageData, x, y, pendingImageDataUrl);
@@ -469,31 +520,45 @@ function baseElm(pageData, cls, opts={}){
   return el;
 }
 
-function createTextElement(pageData, x, y){
+function createTextElement(pageData, x, y, presetText, presetFontSizePx){
   const el = baseElm(pageData, 'text-elm', {grip:true, isText:true});
-  const size = parseInt(fontSizeInput.value)||16;
-  const color = fontColorInput.value;
+  const inner = document.createElement('div');
+  inner.className = 'text-inner';
+  inner.setAttribute('contenteditable', 'true');
+  const size = presetFontSizePx || parseInt(fontSizeInput.value) || 16;
+  inner.style.fontSize = size+'px';
+  inner.style.color = fontColorInput.value;
+  if(presetText) inner.textContent = presetText;
+  el.insertBefore(inner, el.firstChild);
   el.style.left = x+'px';
   el.style.top = y+'px';
-  el.style.fontSize = size+'px';
-  el.style.color = color;
-  el.setAttribute('contenteditable','true');
   el.dataset.type='text';
-  if(!el.textContent) el.textContent = '';
 
   const data = {dom: el, type:'text', getState(){
     return {
       x: el.offsetLeft, y: el.offsetTop,
-      w: el.offsetWidth, h: el.offsetHeight,
-      text: el.innerText,
-      fontSize: parseFloat(el.style.fontSize),
-      color: el.style.color
+      w: inner.offsetWidth, h: inner.offsetHeight,
+      text: inner.innerText,
+      fontSize: parseFloat(inner.style.fontSize),
+      color: inner.style.color
     };
   }};
   pageData.elements.push(data);
 
-  el.addEventListener('mousedown', (e)=>{ selectElm(el); e.stopPropagation(); });
-  setTimeout(()=>{ el.focus(); selectElm(el); }, 30);
+  inner.addEventListener('mousedown', (e)=>{ selectElm(el); e.stopPropagation(); });
+  setTimeout(()=>{
+    inner.focus();
+    selectElm(el);
+    if(presetText){
+      // put cursor at the end of the prefilled text instead of selecting/replacing it
+      const range = document.createRange();
+      range.selectNodeContents(inner);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }, 30);
   return el;
 }
 
@@ -552,9 +617,13 @@ function deselectAll(){
   selectedElm = null;
 }
 document.addEventListener('keydown', (e)=>{
-  if((e.key==='Delete' || e.key==='Backspace') && selectedElm && document.activeElement!==selectedElm){
-    selectedElm.remove();
-    selectedElm = null;
+  if((e.key==='Delete' || e.key==='Backspace') && selectedElm){
+    const active = document.activeElement;
+    const isEditingText = active && active.isContentEditable;
+    if(!isEditingText){
+      selectedElm.remove();
+      selectedElm = null;
+    }
   }
 });
 
@@ -576,7 +645,8 @@ function makeDraggable(el, resizeHandle, dragHandle, pageData, opts={}){
     resizing = true;
     startX = e.clientX; startY = e.clientY;
     startW = el.offsetWidth; startH = el.offsetHeight;
-    startFontSize = parseFloat(el.style.fontSize) || 16;
+    const fsTarget = opts.isText ? el.querySelector('.text-inner') : el;
+    startFontSize = parseFloat(fsTarget.style.fontSize) || 16;
     e.stopPropagation();
     e.preventDefault();
   });
@@ -590,7 +660,7 @@ function makeDraggable(el, resizeHandle, dragHandle, pageData, opts={}){
         // for text: resize handle scales font size, box stays auto-fit to content
         const delta = (e.clientX-startX) + (e.clientY-startY);
         const newSize = Math.max(6, Math.round(startFontSize + delta/6));
-        el.style.fontSize = newSize + 'px';
+        el.querySelector('.text-inner').style.fontSize = newSize + 'px';
       } else {
         el.style.width = Math.max(20, startW + (e.clientX-startX)) + 'px';
         el.style.height = Math.max(14, startH + (e.clientY-startY)) + 'px';
