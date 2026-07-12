@@ -13,6 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
 <style>
   :root{
     --ink:#161a1d;
@@ -1196,8 +1197,8 @@ let convFile = null;
 const CONV_NOTES = {
   docx2pdf: 'Format dan gaya dasar (paragraf, bold/italic, gambar) akan mengikuti tampilan dokumen Word, dirender sebagai halaman PDF. Layout yang sangat kompleks mungkin tidak 100% identik.',
   xlsx2pdf: 'Setiap sheet dijadikan tabel di halaman PDF (orientasi lanskap). Cocok untuk data tabular; format sel yang rumit (warna, merge cell) tidak sepenuhnya dipertahankan.',
-  pdf2doc: 'Teks diekstrak per halaman dan disusun jadi paragraf di file Word (.doc). Tata letak asli (kolom, tabel, posisi presisi) tidak dipertahankan — cocok untuk mengambil ulang isi teksnya.',
-  pdf2xlsx: 'Teks diekstrak dan dikelompokkan jadi baris/kolom berdasarkan posisi di halaman (perkiraan). Cocok untuk PDF tabel yang sederhana; tabel kompleks mungkin perlu dirapikan manual setelah dibuka di Excel.'
+  pdf2doc: 'Teks diekstrak per halaman dan disusun jadi paragraf di file Word (.doc). Kalau halaman ternyata berupa gambar/scan (tidak ada teks asli), otomatis dibaca lewat OCR — mungkin butuh waktu lebih lama dan bisa ada sedikit typo. Tata letak asli (kolom, tabel, posisi presisi) tidak dipertahankan.',
+  pdf2xlsx: 'Teks diekstrak dan dikelompokkan jadi baris/kolom berdasarkan posisi di halaman (perkiraan). Kalau halaman berupa gambar/scan, otomatis dibaca lewat OCR dulu. Cocok untuk PDF tabel yang sederhana; tabel kompleks mungkin perlu dirapikan manual setelah dibuka di Excel.'
 };
 const CONV_ACCEPT = {
   docx2pdf: '.docx',
@@ -1310,26 +1311,91 @@ async function xlsxToPdf(file){
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-function groupItemsIntoLines(items){
+
+// Groups items (pdf.js text items OR pseudo-items from OCR) into visual rows,
+// top-to-bottom, sorted left-to-right within each row.
+function clusterRows(items, tolerance){
   const rows = {};
   items.forEach(it=>{
     if(!it.str || !it.str.trim()) return;
-    const key = Math.round(it.transform[5]/3)*3;
+    const key = Math.round(it.transform[5]/tolerance)*tolerance;
     if(!rows[key]) rows[key]=[];
     rows[key].push(it);
   });
   const keys = Object.keys(rows).map(Number).sort((a,b)=>b-a);
-  return keys.map(k => rows[k].sort((a,b)=>a.transform[4]-b.transform[4]).map(it=>it.str).join(' '));
+  return keys.map(k => rows[k].sort((a,b)=>a.transform[4]-b.transform[4]));
+}
+
+async function renderPageCanvas(page, scaleVal){
+  const viewport = page.getViewport({scale: scaleVal});
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width; canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({canvasContext: ctx, viewport}).promise;
+  return canvas;
+}
+
+let _tesseractWorker = null;
+async function getTesseractWorker(){
+  if(_tesseractWorker) return _tesseractWorker;
+  setBusy(true, 'Menyiapkan OCR (mengunduh model bahasa)...');
+  _tesseractWorker = await Tesseract.createWorker('ind+eng', 1, {
+    logger: m => {
+      if(m.status){
+        const pct = m.progress!=null ? ` ${Math.round(m.progress*100)}%` : '';
+        setBusy(true, `OCR: ${m.status}${pct}`);
+      }
+    }
+  });
+  return _tesseractWorker;
+}
+
+// Runs OCR on a canvas and returns items shaped like pdf.js text items
+// (str + transform[4]=x, transform[5]=-y so the same row/column
+// clustering logic used for real PDF text can be reused unchanged).
+async function ocrCanvasWords(canvas){
+  const worker = await getTesseractWorker();
+  const { data } = await worker.recognize(canvas);
+  const words = [];
+  (data.words || []).forEach(w=>{
+    if(!w.text || !w.text.trim()) return;
+    words.push({
+      str: w.text,
+      width: w.bbox.x1 - w.bbox.x0,
+      height: w.bbox.y1 - w.bbox.y0,
+      transform: [1,0,0,1, w.bbox.x0, -w.bbox.y0]
+    });
+  });
+  return words;
+}
+
+// Reads a page's text: uses the real embedded text layer when available;
+// if the page has (almost) no extractable text — typical for scanned
+// invoices/receipts, or PDFs exported as a flat screenshot — it falls back
+// to OCR on a rendered image of the page so the result isn't empty.
+async function getPageItemsTagged(page){
+  const tc = await page.getTextContent();
+  const totalChars = tc.items.reduce((s,it)=>s+((it.str||'').trim().length),0);
+  if(totalChars > 3){
+    return {items: tc.items, tolerance:3, isOcr:false};
+  }
+  const canvas = await renderPageCanvas(page, 2.2);
+  const words = await ocrCanvasWords(canvas);
+  return {items: words, tolerance:8, isOcr:true};
 }
 
 async function pdfToDoc(file){
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data: buf}).promise;
   let bodyHtml = '';
+  let usedOcr = false;
   for(let i=1;i<=pdf.numPages;i++){
+    setBusy(true, `Membaca halaman ${i}/${pdf.numPages}...`);
     const page = await pdf.getPage(i);
-    const tc = await page.getTextContent();
-    const lines = groupItemsIntoLines(tc.items);
+    const { items, tolerance, isOcr } = await getPageItemsTagged(page);
+    if(isOcr) usedOcr = true;
+    const rows = clusterRows(items, tolerance);
+    const lines = rows.map(r => r.map(it=>it.str).join(' '));
     bodyHtml += lines.map(l => `<p>${escapeHtml(l)}</p>`).join('\n');
     if(i < pdf.numPages) bodyHtml += '<br clear="all" style="page-break-before:always">';
   }
@@ -1343,6 +1409,7 @@ async function pdfToDoc(file){
   const a = document.createElement('a');
   a.href = url; a.download = file.name.replace(/\.pdf$/i,'') + '.doc'; a.click();
   URL.revokeObjectURL(url);
+  if(usedOcr) showHint('Halaman tanpa teks asli otomatis dibaca lewat OCR — periksa kembali hasilnya, mungkin ada sedikit typo.');
 }
 
 /* ---- PDF -> Excel (.xlsx) ---- */
@@ -1368,25 +1435,22 @@ async function pdfToXlsx(file){
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data: buf}).promise;
   const wb = XLSX.utils.book_new();
+  let usedOcr = false;
 
   for(let i=1;i<=pdf.numPages;i++){
+    setBusy(true, `Membaca halaman ${i}/${pdf.numPages}...`);
     const page = await pdf.getPage(i);
-    const tc = await page.getTextContent();
-    const rows = {};
-    tc.items.forEach(it=>{
-      if(!it.str || !it.str.trim()) return;
-      const key = Math.round(it.transform[5]/3)*3;
-      if(!rows[key]) rows[key]=[];
-      rows[key].push(it);
-    });
-    const keys = Object.keys(rows).map(Number).sort((a,b)=>b-a);
-    const aoa = keys.map(k => lineToCells(rows[k].sort((a,b)=>a.transform[4]-b.transform[4])));
+    const { items, tolerance, isOcr } = await getPageItemsTagged(page);
+    if(isOcr) usedOcr = true;
+    const rows = clusterRows(items, tolerance);
+    const aoa = rows.map(r => lineToCells(r));
     const ws = XLSX.utils.aoa_to_sheet(aoa.length ? aoa : [['(kosong)']]);
     XLSX.utils.book_append_sheet(wb, ws, ('Hal ' + i).slice(0,31));
   }
 
   const out = XLSX.write(wb, {type:'array', bookType:'xlsx'});
   downloadBlob(out, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', file.name.replace(/\.pdf$/i,'') + '.xlsx');
+  if(usedOcr) showHint('Halaman tanpa teks asli otomatis dibaca lewat OCR — periksa kembali hasilnya, mungkin ada sedikit typo.');
 }
 </script>
 </body>
