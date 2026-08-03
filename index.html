@@ -370,7 +370,7 @@
       <input type="file" id="fileInput" accept="application/pdf" hidden>
 
       <button class="tool" id="btnText" disabled>+ Teks</button>
-      <button class="tool" id="btnEditExisting" disabled>✎ Edit Teks Asli</button>
+      <button class="tool" id="btnEditExisting" disabled>✎ Edit &amp; Geser Teks Asli</button>
       <button class="tool" id="btnWhiteout" disabled>Tutup Teks Lama</button>
       <button class="tool" id="btnImage" disabled>+ Gambar</button>
       <input type="file" id="imgInput" accept="image/*" hidden>
@@ -387,7 +387,7 @@
       <div id="dropzone">
         <div class="eyebrow">Editor PDF di browser</div>
         <h1>Buka file PDF untuk mulai edit</h1>
-        <p>Klik langsung pada teks asli untuk menggantinya, tambahkan teks/gambar baru, atau tutup teks lama secara manual. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
+        <p>Klik langsung pada teks asli untuk menggantinya, tambahkan teks/gambar baru, atau tutup teks lama secara manual. Semua elemen (termasuk teks asli) bisa diseret bebas dengan mouse atau digeser presisi pakai tombol panah keyboard. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
         <button id="btnUpload2">Pilih file PDF</button>
       </div>
     </div>
@@ -635,9 +635,9 @@ async function loadPdf(bytes){
 function setMode(newMode){
   mode = (mode===newMode) ? null : newMode;
   [btnText, btnEditExisting, btnWhiteout, btnImage].forEach(b=>b.classList.remove('active'));
-  if(mode==='text') { btnText.classList.add('active'); showHint('Klik di mana saja pada halaman untuk menambah teks.'); }
-  if(mode==='editExisting') { btnEditExisting.classList.add('active'); showHint('Klik tepat di atas teks asli yang ingin diubah.'); }
-  if(mode==='whiteout') { btnWhiteout.classList.add('active'); showHint('Klik & seret untuk menutup teks lama, lalu ketik teks baru di atasnya.'); }
+  if(mode==='text') { btnText.classList.add('active'); showHint('Klik di mana saja pada halaman untuk menambah teks. Setelah itu, klik & seret kotaknya untuk memindahkan.'); }
+  if(mode==='editExisting') { btnEditExisting.classList.add('active'); showHint('Klik tepat di atas teks asli. Kotak yang muncul bisa langsung diseret untuk dipindah, atau diketik ulang isinya.'); }
+  if(mode==='whiteout') { btnWhiteout.classList.add('active'); showHint('Klik & seret untuk menutup teks lama, lalu ketik teks baru di atasnya — kotaknya juga bisa diseret bebas.'); }
   if(mode==='image') { btnImage.classList.add('active'); }
 }
 btnText.onclick = ()=> setMode('text');
@@ -673,7 +673,7 @@ function onOverlayMouseDown(ev, pageData){
       const pad = 2;
       createRectElement(pageData, hitTxt.x-pad, hitTxt.y-pad, hitTxt.w+pad*2, hitTxt.h+pad*2);
       createTextElement(pageData, hitTxt.x, hitTxt.y-1, hitTxt.str, Math.round(hitTxt.h*0.92));
-      showHint('Teks asli sudah ditutup — ubah tulisan di kotak yang muncul.');
+      showHint('Teks asli sudah ditutup — klik & seret kotaknya untuk memindah posisi, atau langsung ketik untuk mengubah isinya.');
     } else {
       showHint('Tidak ada teks terdeteksi di titik itu. Coba klik tepat di atas tulisan.');
     }
@@ -783,7 +783,7 @@ function createTextElement(pageData, x, y, presetText, presetFontSizePx){
   }};
   pageData.elements.push(data);
 
-  inner.addEventListener('mousedown', (e)=>{ selectElm(el); e.stopPropagation(); });
+  enableBodyDrag(el, inner, pageData);
   setTimeout(()=>{
     inner.focus();
     selectElm(el);
@@ -797,6 +797,48 @@ function createTextElement(pageData, x, y, presetText, presetFontSizePx){
     }
   }, 30);
   return el;
+}
+
+// Lets a text box be moved by clicking anywhere on it and dragging,
+// like other PDF editors (Sejda/PDFescape style), while a plain click
+// (no movement) still behaves normally and places the text cursor so
+// the user can type/edit. Works for both new text boxes and the
+// draggable boxes created when editing existing/original PDF text.
+function enableBodyDrag(el, bodyEl, pageData){
+  let potential = false, dragging = false;
+  let startX, startY, startLeft, startTop;
+  const THRESHOLD = 4;
+
+  bodyEl.addEventListener('mousedown', (e)=>{
+    if(e.button !== 0) return;
+    potential = true; dragging = false;
+    startX = e.clientX; startY = e.clientY;
+    startLeft = el.offsetLeft; startTop = el.offsetTop;
+    selectElm(el);
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', (e)=>{
+    if(!potential) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if(!dragging && (Math.abs(dx) > THRESHOLD || Math.abs(dy) > THRESHOLD)){
+      dragging = true;
+      // stop caret/selection weirdness once a real drag starts
+      bodyEl.blur();
+      window.getSelection().removeAllRanges();
+      bodyEl.style.cursor = 'grabbing';
+    }
+    if(dragging){
+      el.style.left = (startLeft + dx) + 'px';
+      el.style.top = (startTop + dy) + 'px';
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('mouseup', ()=>{
+    if(dragging){ bodyEl.style.cursor = ''; }
+    potential = false; dragging = false;
+  });
 }
 
 function createRectElement(pageData, x, y, w, h){
@@ -854,13 +896,29 @@ function deselectAll(){
   selectedElm = null;
 }
 document.addEventListener('keydown', (e)=>{
-  if((e.key==='Delete' || e.key==='Backspace') && selectedElm){
-    const active = document.activeElement;
-    const isEditingText = active && active.isContentEditable;
-    if(!isEditingText){
-      selectedElm.remove();
-      selectedElm = null;
-    }
+  if(!selectedElm) return;
+  const active = document.activeElement;
+  const isEditingText = active && active.isContentEditable;
+
+  if((e.key==='Delete' || e.key==='Backspace') && !isEditingText){
+    selectedElm.remove();
+    selectedElm = null;
+    return;
+  }
+
+  // Nudge the selected box with arrow keys (hold Shift for bigger steps).
+  // Only when not actively typing inside a text box, so arrows still
+  // move the caret while editing.
+  if(!isEditingText && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){
+    const step = e.shiftKey ? 10 : 1;
+    let left = selectedElm.offsetLeft, top = selectedElm.offsetTop;
+    if(e.key==='ArrowUp') top -= step;
+    if(e.key==='ArrowDown') top += step;
+    if(e.key==='ArrowLeft') left -= step;
+    if(e.key==='ArrowRight') left += step;
+    selectedElm.style.left = left+'px';
+    selectedElm.style.top = top+'px';
+    e.preventDefault();
   }
 });
 
