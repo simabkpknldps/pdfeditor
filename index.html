@@ -108,7 +108,6 @@
     width:52px;background:var(--panel-2);color:var(--text-on-panel);border:1px solid #3a3f47;border-radius:6px;padding:6px;font-family:var(--mono);font-size:12px;
   }
 
-  
   /* ---- Panels / tabs ---- */
   #main{flex:1;min-height:0;position:relative;}
   .panel{height:100%;display:none;flex-direction:column;}
@@ -332,6 +331,31 @@
     z-index:75;
   }
 
+  #blockBox{
+    position:absolute;
+    border:1.5px dashed #2f6fa4;
+    background:rgba(47,111,164,.08);
+    pointer-events:none;
+    display:none;
+    z-index:75;
+  }
+  .group-frame{
+    position:absolute;
+    border:2px dashed #2f6fa4;
+    background:rgba(47,111,164,.05);
+    cursor:move;
+    z-index:50;
+  }
+  .group-frame::after{
+    content:'✥ seret untuk memindahkan semua';
+    position:absolute;
+    top:-24px; left:0;
+    font-family:var(--mono);
+    font-size:10.5px;
+    color:#2f6fa4;
+    white-space:nowrap;
+  }
+
   #busyOverlay{
     position:fixed; inset:0;
     background:rgba(22,26,29,.55);
@@ -372,6 +396,7 @@
 
       <button class="tool" id="btnText" disabled>+ Teks</button>
       <button class="tool" id="btnEditExisting" disabled>✎ Edit &amp; Geser Teks Asli</button>
+      <button class="tool" id="btnBlockMove" disabled>▦ Blok &amp; Geser</button>
       <button class="tool" id="btnWhiteout" disabled>Tutup Teks Lama</button>
       <button class="tool" id="btnImage" disabled>+ Gambar</button>
       <input type="file" id="imgInput" accept="image/*" hidden>
@@ -388,7 +413,7 @@
       <div id="dropzone">
         <div class="eyebrow">Editor PDF di browser</div>
         <h1>Buka file PDF untuk mulai edit</h1>
-        <p>Klik langsung pada teks asli untuk menggantinya, tambahkan teks/gambar baru, atau tutup teks lama secara manual. Semua elemen (termasuk teks asli) bisa diseret bebas dengan mouse atau digeser presisi pakai tombol panah keyboard. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
+        <p>Klik langsung pada teks asli untuk menggantinya, tambahkan teks/gambar baru, atau tutup teks lama secara manual. Mau pindahkan banyak teks sekaligus? Pakai "Blok & Geser" untuk memblok satu area, lalu seret semuanya bareng. Semua elemen juga bisa digeser presisi pakai tombol panah keyboard. Semua diproses langsung di perangkatmu, tidak diunggah ke server.</p>
         <button id="btnUpload2">Pilih file PDF</button>
       </div>
     </div>
@@ -483,6 +508,7 @@
 </div>
 
 <div id="whiteoutBox"></div>
+<div id="blockBox"></div>
 <div id="hint"></div>
 <div id="busyOverlay"><div id="busyBox">Memproses...</div></div>
 
@@ -539,6 +565,7 @@ const workspace = document.getElementById('workspace');
 const dropzone = document.getElementById('dropzone');
 const btnText = document.getElementById('btnText');
 const btnEditExisting = document.getElementById('btnEditExisting');
+const btnBlockMove = document.getElementById('btnBlockMove');
 const btnWhiteout = document.getElementById('btnWhiteout');
 const btnImage = document.getElementById('btnImage');
 const btnDownload = document.getElementById('btnDownload');
@@ -546,6 +573,7 @@ const fontColorInput = document.getElementById('fontColor');
 const fontSizeInput = document.getElementById('fontSize');
 const pageInfo = document.getElementById('pageInfo');
 const whiteoutBox = document.getElementById('whiteoutBox');
+const blockBox = document.getElementById('blockBox');
 
 let originalBytes = null;
 let scale = 1.5;
@@ -627,6 +655,7 @@ async function loadPdf(bytes){
 
   btnText.disabled = false;
   btnEditExisting.disabled = false;
+  btnBlockMove.disabled = false;
   btnWhiteout.disabled = false;
   btnImage.disabled = false;
   btnDownload.disabled = false;
@@ -635,14 +664,17 @@ async function loadPdf(bytes){
 
 function setMode(newMode){
   mode = (mode===newMode) ? null : newMode;
-  [btnText, btnEditExisting, btnWhiteout, btnImage].forEach(b=>b.classList.remove('active'));
+  clearGroupFrame();
+  [btnText, btnEditExisting, btnBlockMove, btnWhiteout, btnImage].forEach(b=>b.classList.remove('active'));
   if(mode==='text') { btnText.classList.add('active'); showHint('Klik di mana saja pada halaman untuk menambah teks. Setelah itu, klik & seret kotaknya untuk memindahkan.'); }
   if(mode==='editExisting') { btnEditExisting.classList.add('active'); showHint('Klik tepat di atas teks asli. Kotak yang muncul bisa langsung diseret untuk dipindah, atau diketik ulang isinya.'); }
+  if(mode==='block') { btnBlockMove.classList.add('active'); showHint('Klik & seret untuk memblok satu area — semua teks di dalamnya akan bisa digeser bersama.'); }
   if(mode==='whiteout') { btnWhiteout.classList.add('active'); showHint('Klik & seret untuk menutup teks lama, lalu ketik teks baru di atasnya — kotaknya juga bisa diseret bebas.'); }
   if(mode==='image') { btnImage.classList.add('active'); }
 }
 btnText.onclick = ()=> setMode('text');
 btnEditExisting.onclick = ()=> setMode('editExisting');
+btnBlockMove.onclick = ()=> setMode('block');
 btnWhiteout.onclick = ()=> setMode('whiteout');
 btnImage.onclick = ()=>{ imgInput.value=''; imgInput.click(); };
 imgInput.addEventListener('change', (e)=>{
@@ -692,7 +724,18 @@ function onOverlayMouseDown(ev, pageData){
     whiteoutBox.style.height = '0px';
     document.addEventListener('mousemove', onWhiteoutDrag);
     document.addEventListener('mouseup', onWhiteoutEnd);
+  } else if(mode === 'block'){
+    clearGroupFrame();
+    dragStart = {pageData, x, y};
+    blockBox.style.display = 'block';
+    blockBox.style.left = (rect.left + x) + 'px';
+    blockBox.style.top = (rect.top + y) + 'px';
+    blockBox.style.width = '0px';
+    blockBox.style.height = '0px';
+    document.addEventListener('mousemove', onBlockDrag);
+    document.addEventListener('mouseup', onBlockEnd);
   } else {
+    clearGroupFrame();
     deselectAll();
   }
 }
@@ -732,6 +775,125 @@ function onWhiteoutEnd(){
   }
   dragStart = null;
   setMode(null);
+}
+
+/* ---- Block-select: drag one marquee over several original text
+   lines/elements and move them all together in one go ---- */
+function onBlockDrag(ev){
+  if(!dragStart) return;
+  const rect = dragStart.pageData.overlay.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  const left = Math.min(x, dragStart.x);
+  const top = Math.min(y, dragStart.y);
+  const w = Math.abs(x - dragStart.x);
+  const h = Math.abs(y - dragStart.y);
+  blockBox.style.left = (rect.left+left)+'px';
+  blockBox.style.top = (rect.top+top)+'px';
+  blockBox.style.width = w+'px';
+  blockBox.style.height = h+'px';
+  dragStart.current = {left, top, w, h};
+}
+
+function onBlockEnd(){
+  document.removeEventListener('mousemove', onBlockDrag);
+  document.removeEventListener('mouseup', onBlockEnd);
+  blockBox.style.display = 'none';
+  if(dragStart && dragStart.current && dragStart.current.w > 6 && dragStart.current.h > 6){
+    const {left, top, w, h} = dragStart.current;
+    finalizeAreaSelection(dragStart.pageData, left, top, w, h);
+  }
+  dragStart = null;
+  setMode(null);
+}
+
+function rectsIntersect(a, b){
+  return !(b.x > a.x+a.w || b.x+b.w < a.x || b.y > a.y+a.h || b.y+b.h < a.y);
+}
+
+// Converts every original PDF text line under the marquee into a movable
+// box (same as "Edit & Geser Teks Asli"), then groups everything inside
+// the marquee — original text just converted, plus any element already
+// on the page — into one draggable block.
+function finalizeAreaSelection(pageData, left, top, w, h){
+  const selRect = {x:left, y:top, w, h};
+  pageData.consumedTextIdx = pageData.consumedTextIdx || new Set();
+
+  pageData.textItems.forEach((it, idx)=>{
+    if(pageData.consumedTextIdx.has(idx)) return;
+    if(rectsIntersect(selRect, it)){
+      const pad = 2;
+      createRectElement(pageData, it.x-pad, it.y-pad, it.w+pad*2, it.h+pad*2);
+      createTextElement(pageData, it.x, it.y-1, it.str, Math.round(it.h*0.92));
+      pageData.consumedTextIdx.add(idx);
+    }
+  });
+
+  const members = pageData.elements.filter(elData=>{
+    const dom = elData.dom;
+    const g = {x:dom.offsetLeft, y:dom.offsetTop, w:dom.offsetWidth, h:dom.offsetHeight};
+    return rectsIntersect(selRect, g);
+  });
+
+  deselectAll();
+  setTimeout(()=>{ if(document.activeElement) document.activeElement.blur(); }, 40);
+
+  if(members.length === 0){
+    showHint('Tidak ada teks/elemen terdeteksi di area itu. Coba blok ulang tepat di atas tulisan.');
+    return;
+  }
+  buildGroupFrame(pageData, members);
+  showHint(`${members.length} elemen terpilih — seret kotak putus-putus biru untuk memindahkan semuanya sekaligus.`);
+}
+
+let groupFrame = null;
+let groupMembers = [];
+
+function clearGroupFrame(){
+  if(groupFrame){ groupFrame.remove(); groupFrame = null; }
+  groupMembers = [];
+}
+
+function buildGroupFrame(pageData, members){
+  const lefts = members.map(m=>m.dom.offsetLeft);
+  const tops = members.map(m=>m.dom.offsetTop);
+  const rights = members.map(m=>m.dom.offsetLeft + m.dom.offsetWidth);
+  const bottoms = members.map(m=>m.dom.offsetTop + m.dom.offsetHeight);
+  const pad = 6;
+  const left = Math.min(...lefts) - pad;
+  const top = Math.min(...tops) - pad;
+  const width = (Math.max(...rights) + pad) - left;
+  const height = (Math.max(...bottoms) + pad) - top;
+
+  const frame = document.createElement('div');
+  frame.className = 'group-frame';
+  frame.style.left = left+'px';
+  frame.style.top = top+'px';
+  frame.style.width = width+'px';
+  frame.style.height = height+'px';
+  pageData.overlay.appendChild(frame);
+
+  groupFrame = frame;
+  groupMembers = members;
+
+  let dragging = false, startX, startY, bases = [], frameStartLeft, frameStartTop;
+  frame.addEventListener('mousedown', (e)=>{
+    if(e.button !== 0) return;
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    frameStartLeft = frame.offsetLeft; frameStartTop = frame.offsetTop;
+    bases = members.map(m=>({dom:m.dom, left:m.dom.offsetLeft, top:m.dom.offsetTop}));
+    e.stopPropagation();
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e)=>{
+    if(!dragging) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    bases.forEach(b=>{ b.dom.style.left = (b.left+dx)+'px'; b.dom.style.top = (b.top+dy)+'px'; });
+    frame.style.left = (frameStartLeft+dx)+'px';
+    frame.style.top = (frameStartTop+dy)+'px';
+  });
+  document.addEventListener('mouseup', ()=>{ dragging = false; });
 }
 
 function baseElm(pageData, cls, opts={}){
@@ -897,6 +1059,23 @@ function deselectAll(){
   selectedElm = null;
 }
 document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape' && groupFrame){
+    clearGroupFrame();
+    return;
+  }
+
+  if((e.key==='Delete' || e.key==='Backspace') && groupFrame){
+    groupMembers.forEach(m=>{
+      m.dom.remove();
+    });
+    // remove deleted members from their page's element list
+    pages.forEach(p=>{
+      p.elements = p.elements.filter(el=>!groupMembers.includes(el));
+    });
+    clearGroupFrame();
+    return;
+  }
+
   if(!selectedElm) return;
   const active = document.activeElement;
   const isEditingText = active && active.isContentEditable;
