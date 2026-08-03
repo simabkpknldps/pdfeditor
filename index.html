@@ -804,7 +804,11 @@ function onBlockEnd(){
     finalizeAreaSelection(dragStart.pageData, left, top, w, h);
   }
   dragStart = null;
-  setMode(null);
+  // Exit "block select" mode WITHOUT calling setMode(), because setMode()
+  // clears the group frame we may have just built — that was the bug that
+  // made the just-created group instantly ungrabbable.
+  mode = null;
+  btnBlockMove.classList.remove('active');
 }
 
 function rectsIntersect(a, b){
