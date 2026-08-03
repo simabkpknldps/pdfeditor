@@ -833,7 +833,13 @@ function finalizeAreaSelection(pageData, left, top, w, h){
     }
   });
 
+  // The white "cover" rectangles must stay glued to the original text's
+  // position — they're what keeps the original PDF text hidden. Only the
+  // editable text (and any images) should move as a group; if the covers
+  // moved too, dragging the group would drag the mask away and the
+  // original printed text underneath would show through again.
   const members = pageData.elements.filter(elData=>{
+    if(elData.type === 'rect') return false;
     const dom = elData.dom;
     const g = {x:dom.offsetLeft, y:dom.offsetTop, w:dom.offsetWidth, h:dom.offsetHeight};
     return rectsIntersect(selRect, g);
