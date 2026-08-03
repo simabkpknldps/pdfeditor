@@ -1679,6 +1679,7 @@ function lineToCells(itemsSortedByX){
   return cells;
 }
 
+  
 async function pdfToXlsx(file){
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data: buf}).promise;
