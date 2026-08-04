@@ -45,7 +45,7 @@
   header h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px;}
   header p{margin:2px 0 0;font-size:12.5px;color:#c9d3e0;}
 
-  main{max-width:920px;margin:0 auto;padding:28px 20px 60px;}
+  main{max-width:940px;margin:0 auto;padding:28px 20px 60px;}
 
   .card{
     background:#fff;
@@ -106,7 +106,20 @@
   .status.ok{color:var(--ok);}
   .status.ok::before{content:"✓ ";}
 
-  #slots{margin-top:14px;display:none;}
+  .shift-row{
+    display:flex;align-items:center;gap:10px;
+    background:#fbf7ec;border:1px solid #e6d9b2;
+    padding:12px 14px;border-radius:8px;margin-bottom:16px;
+    flex-wrap:wrap;
+  }
+  .shift-row label{font-size:13px;color:var(--navy);font-weight:600;}
+  .shift-row input[type=number]{
+    width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;
+    font-size:13px;
+  }
+  .shift-row .hint{font-size:12px;color:var(--muted);flex-basis:100%;}
+
+  #slots{margin-top:4px;display:none;}
   .slot{
     display:flex;align-items:flex-start;gap:10px;
     padding:12px;border:1px solid var(--line);border-radius:8px;
@@ -119,6 +132,11 @@
     background:var(--navy);color:#fff;font-size:10.5px;
     padding:2px 7px;border-radius:10px;margin-left:8px;
   }
+  .slot .border-tag{
+    font-size:10.5px;padding:2px 7px;border-radius:10px;margin-left:6px;
+  }
+  .slot .border-tag.yes{background:#e3f2e6;color:var(--ok);}
+  .slot .border-tag.no{background:#f2e3e3;color:#a33;}
 
   .empty-note{
     font-size:13px;color:var(--muted);
@@ -183,7 +201,7 @@
   <div class="seal">KPKNL</div>
   <div>
     <h1>Penambahan Keterangan Tanda Tangan Elektronik</h1>
-    <p>KPKNL Denpasar — teks abu-abu ditempatkan otomatis di atas nama penandatangan</p>
+    <p>KPKNL Denpasar — teks abu-abu ditempatkan otomatis, baris nama/NIP &amp; garis kotak bisa digeser ke bawah</p>
   </div>
 </header>
 
@@ -205,10 +223,17 @@
   </div>
 
   <div class="card" id="slotsCard" style="display:none;">
-    <h2><span class="num">2</span> Lokasi terdeteksi</h2>
+    <h2><span class="num">2</span> Lokasi terdeteksi &amp; pengaturan geser</h2>
+
+    <div class="shift-row">
+      <label for="shiftAmount">Geser nama, NIP &amp; garis kotak ke bawah:</label>
+      <input type="number" id="shiftAmount" value="14" min="0" max="60" step="1"> pt
+      <div class="hint">Nama, NIP, dan garis kotak (jika terdeteksi) akan digeser turun sejumlah ini sebelum teks "Ditandatangani secara elektronik" disisipkan, supaya tidak berhimpitan dengan teks di atasnya.</div>
+    </div>
+
     <div id="slots"></div>
     <div id="emptyNote" class="empty-note" style="display:none;">
-      Tidak ada nama+NIP yang terdeteksi otomatis. Gunakan mode klik manual di bawah pratinjau untuk menandai posisi secara langsung.
+      Tidak ada nama+NIP yang terdeteksi otomatis. Gunakan mode klik manual di bawah pratinjau untuk menandai posisi secara langsung (mode manual tidak menggeser garis kotak).
     </div>
     <div class="manual-row">
       <button id="manualToggle" type="button">+ Tambah titik manual (klik di pratinjau)</button>
@@ -228,7 +253,7 @@
   <div class="card" id="resultCard" style="display:none;">
     <h2><span class="num">✓</span> Selesai</h2>
     <p style="font-size:13.5px;color:var(--muted);margin-top:0;">
-      Teks "Ditandatangani secara elektronik" (abu-abu) telah ditambahkan di atas nama yang dipilih.
+      Nama, NIP, dan garis kotak (bila terdeteksi) telah digeser ke bawah, lalu teks "Ditandatangani secara elektronik" (abu-abu) disisipkan di ruang yang tersedia.
       Ruang di atas teks ini disediakan untuk QR code yang akan ditempel oleh sistem selanjutnya.
     </p>
     <a class="download-btn" id="downloadLink" download="ttd-elektronik.pdf">⬇ Unduh PDF</a>
@@ -258,13 +283,15 @@ const resultCard = document.getElementById('resultCard');
 const downloadLink = document.getElementById('downloadLink');
 const manualToggle = document.getElementById('manualToggle');
 const manualHint = document.getElementById('manualHint');
+const shiftAmountInput = document.getElementById('shiftAmount');
 
 let originalBytes = null;      // ArrayBuffer, kept pristine
 let pdfjsDoc = null;
-let slots = [];                // {id, page(0-based), text, x, y, w, h, fontSize, enabled, manual}
+let slots = [];                // {id, page, nameLine, nipLine, borderLine|null, enabled, manual}
 let manualMode = false;
 const RENDER_SCALE = 1.4;
 let pageViewports = [];        // per page viewport at RENDER_SCALE
+let pageRaster = [];           // per page cached ImageData (clean render, before overlays)
 let slotIdCounter = 0;
 
 const STAMP_TEXT = "Ditandatangani secara elektronik";
@@ -285,7 +312,7 @@ fileInput.addEventListener('change', e => {
 clearFileBtn.addEventListener('click', resetAll);
 
 function resetAll(){
-  originalBytes = null; pdfjsDoc = null; slots = []; pageViewports = [];
+  originalBytes = null; pdfjsDoc = null; slots = []; pageViewports = []; pageRaster = [];
   fileInput.value = '';
   filebar.style.display = 'none';
   dropzone.style.display = 'block';
@@ -318,10 +345,12 @@ async function handleFile(file){
   pdfjsDoc = await pdfjsLib.getDocument({ data: workingCopy }).promise;
 
   await detectSlots();
-  await renderPreview();
+  await renderPreview();      // also fills pageRaster
+  await detectBorderLinesForSlots();
+  redrawOverlays();
 
   statusEl.className = 'status ok';
-  statusEl.textContent = `${slots.length} lokasi terdeteksi otomatis. Periksa daftar di bawah, lalu klik "Terapkan & Buat PDF".`;
+  statusEl.textContent = `${slots.length} lokasi terdeteksi otomatis. Periksa daftar di bawah, atur jarak geser bila perlu, lalu klik "Terapkan & Buat PDF".`;
   slotsCard.style.display = 'block';
   previewCard.style.display = 'block';
   renderSlotList();
@@ -343,7 +372,6 @@ async function detectSlots(){
     for (const it of items){
       const x = it.transform[4], y = it.transform[5];
       const key = Math.round(y);
-      // merge into an existing nearby line (tolerance 2.5pt)
       let foundKey = null;
       for (const k of lineMap.keys()){
         if (Math.abs(k - key) <= 2.5){ foundKey = k; break; }
@@ -367,7 +395,6 @@ async function detectSlots(){
     const nipLines = lines.filter(l => /^NIP[\s.:]*\d{5,}/i.test(l.text));
 
     for (const nip of nipLines){
-      // find nearest line ABOVE (larger y) within vertical gap 4-22pt, with overlapping/aligned x
       let best = null, bestDist = Infinity;
       for (const cand of lines){
         if (cand === nip) continue;
@@ -384,10 +411,9 @@ async function detectSlots(){
         slots.push({
           id: 'auto-' + (slotIdCounter++),
           page: p - 1,
-          text: best.text,
-          x: best.minX,
-          y: best.y,
-          h: best.h || 11,
+          nameLine: best,
+          nipLine: nip,
+          borderLine: null,   // filled later by detectBorderLinesForSlots
           enabled: true,
           manual: false
         });
@@ -396,11 +422,12 @@ async function detectSlots(){
   }
 }
 
-// ---------- Render preview with overlays ----------
+// ---------- Render preview & cache clean raster for line-detection ----------
 
 async function renderPreview(){
   previewWrap.innerHTML = '';
   pageViewports = [];
+  pageRaster = [];
   const numPages = pdfjsDoc.numPages;
 
   for (let p = 1; p <= numPages; p++){
@@ -415,39 +442,132 @@ async function renderPreview(){
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
 
+    // cache clean pixels for border-line detection before any overlay is drawn
+    pageRaster[p-1] = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
     canvas.addEventListener('click', onCanvasClick);
     previewWrap.appendChild(canvas);
   }
   previewWrap.style.display = 'block';
-  redrawOverlays();
+}
+
+// ---------- Border-line detection via pixel scan on cached raster ----------
+
+function luminanceAt(imgData, px, py){
+  if (px < 0 || py < 0 || px >= imgData.width || py >= imgData.height) return 255;
+  const idx = (py * imgData.width + px) * 4;
+  return 0.299*imgData.data[idx] + 0.587*imgData.data[idx+1] + 0.114*imgData.data[idx+2];
+}
+
+async function detectBorderLinesForSlots(){
+  const shift = 0; // detection itself is shift-independent
+  for (const s of slots){
+    if (s.manual) continue;
+    const viewport = pageViewports[s.page];
+    const raster = pageRaster[s.page];
+    if (!viewport || !raster) continue;
+
+    const xLeft = Math.min(s.nameLine.minX, s.nipLine.minX) - 15;
+    const xRight = Math.max(s.nameLine.minX, s.nipLine.minX) + 260;
+
+    // search window: from just below NIP baseline down to 40pt further down the page
+    const yTopPdf = s.nipLine.y - 1;
+    const yBottomPdf = s.nipLine.y - 40;
+
+    const [cxL, cyTop] = viewport.convertToViewportPoint(xLeft, yTopPdf);
+    const [cxR, cyBottom] = viewport.convertToViewportPoint(xRight, yBottomPdf);
+
+    const rowStart = Math.max(0, Math.min(cyTop, cyBottom));
+    const rowEnd = Math.min(raster.height - 1, Math.max(cyTop, cyBottom));
+    const colStart = Math.max(0, Math.min(cxL, cxR));
+    const colEnd = Math.min(raster.width - 1, Math.max(cxL, cxR));
+
+    let foundRow = null;
+    for (let row = Math.round(rowStart); row <= Math.round(rowEnd); row++){
+      let dark = 0, total = 0;
+      for (let col = Math.round(colStart); col <= Math.round(colEnd); col += 2){
+        total++;
+        if (luminanceAt(raster, col, row) < 150) dark++;
+      }
+      if (total > 0 && (dark / total) > 0.45){
+        foundRow = row;
+        break;
+      }
+    }
+
+    if (foundRow !== null){
+      const [px1] = viewport.convertToPdfPoint(colStart, foundRow);
+      const [px2, py] = viewport.convertToPdfPoint(colEnd, foundRow);
+      s.borderLine = { y: py, x1: px1, x2: px2 };
+    }
+  }
 }
 
 function redrawOverlays(){
+  const shift = parseFloat(shiftAmountInput.value) || 0;
   const canvases = previewWrap.querySelectorAll('canvas');
   canvases.forEach(async (canvas) => {
     const pageIdx = parseInt(canvas.dataset.page, 10);
-    const page = await pdfjsDoc.getPage(pageIdx + 1);
     const viewport = pageViewports[pageIdx];
     const ctx = canvas.getContext('2d');
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    ctx.putImageData(pageRaster[pageIdx], 0, 0);
 
     for (const s of slots){
       if (s.page !== pageIdx) continue;
-      const [cx, cy] = viewport.convertToViewportPoint(s.x, s.y + s.h + 3);
-      ctx.save();
-      ctx.strokeStyle = s.enabled ? '#b3872f' : '#c9c9c9';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4,3]);
-      const boxW = 190, boxH = 16;
-      ctx.strokeRect(cx, cy - boxH, boxW, boxH);
-      if (s.enabled){
-        ctx.font = '11px Segoe UI, sans-serif';
-        ctx.fillStyle = 'rgba(120,120,120,0.9)';
-        ctx.fillText(STAMP_TEXT, cx + 2, cy - 4);
+
+      if (s.manual){
+        const [cx, cy] = viewport.convertToViewportPoint(s.x, s.y + s.h + 3);
+        drawStampPreview(ctx, cx, cy, s.enabled);
+        continue;
       }
-      ctx.restore();
+
+      const nameX = s.nameLine.minX, nameY = s.nameLine.y, nameH = s.nameLine.h;
+      const shiftedNameY = nameY - shift;
+
+      if (s.enabled){
+        // shifted name/NIP position markers (light box)
+        const [nx, ny] = viewport.convertToViewportPoint(nameX, shiftedNameY + nameH);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(179,135,47,0.55)';
+        ctx.setLineDash([3,3]);
+        ctx.strokeRect(nx - 2, ny, (s.nipLine.maxX - nameX) + 6, (nameY - s.nipLine.y) + nameH + 6);
+        ctx.restore();
+
+        // stamp text preview, sits just above the (shifted) name
+        const [gx, gy] = viewport.convertToViewportPoint(nameX, shiftedNameY + nameH + 3);
+        drawStampPreview(ctx, gx, gy, true);
+
+        // shifted border line preview
+        if (s.borderLine){
+          const [lx1, ly] = viewport.convertToViewportPoint(s.borderLine.x1, s.borderLine.y - shift);
+          const [lx2] = viewport.convertToViewportPoint(s.borderLine.x2, s.borderLine.y - shift);
+          ctx.save();
+          ctx.strokeStyle = '#173a63';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(lx1, ly);
+          ctx.lineTo(lx2, ly);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
     }
   });
+}
+
+function drawStampPreview(ctx, cx, cy, enabled){
+  ctx.save();
+  ctx.strokeStyle = enabled ? '#b3872f' : '#c9c9c9';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,3]);
+  const boxW = 190, boxH = 16;
+  ctx.strokeRect(cx, cy - boxH, boxW, boxH);
+  if (enabled){
+    ctx.font = 'italic 11px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(120,120,120,0.9)';
+    ctx.fillText(STAMP_TEXT, cx + 2, cy - 4);
+  }
+  ctx.restore();
 }
 
 function onCanvasClick(e){
@@ -462,7 +582,6 @@ function onCanvasClick(e){
   slots.push({
     id: 'manual-' + (slotIdCounter++),
     page: pageIdx,
-    text: '(titik manual)',
     x: px,
     y: py - 14,
     h: 11,
@@ -477,8 +596,10 @@ manualToggle.addEventListener('click', () => {
   manualMode = !manualMode;
   manualToggle.classList.toggle('active', manualMode);
   manualToggle.textContent = manualMode ? '✓ Mode manual aktif — klik di pratinjau' : '+ Tambah titik manual (klik di pratinjau)';
-  manualHint.textContent = manualMode ? 'Klik tepat di atas nama pada gambar pratinjau.' : '';
+  manualHint.textContent = manualMode ? 'Klik tepat di atas nama pada gambar pratinjau. Titik manual tidak menggeser garis kotak.' : '';
 });
+
+shiftAmountInput.addEventListener('input', () => { if (pdfjsDoc) redrawOverlays(); });
 
 // ---------- Slot list UI ----------
 
@@ -495,11 +616,17 @@ function renderSlotList(){
   slots.forEach(s => {
     const row = document.createElement('div');
     row.className = 'slot';
+    const label = s.manual ? '(titik manual)' : s.nameLine.text;
+    const nip = s.manual ? '' : ` &middot; ${escapeHtml(s.nipLine.text)}`;
+    const borderTag = s.manual ? '' :
+      (s.borderLine
+        ? '<span class="border-tag yes">garis kotak terdeteksi</span>'
+        : '<span class="border-tag no">garis kotak tidak terdeteksi</span>');
     row.innerHTML = `
       <input type="checkbox" ${s.enabled ? 'checked' : ''}>
       <div>
-        <div class="found-name">${escapeHtml(s.text)}<span class="page-tag">Hal. ${s.page+1}</span></div>
-        <div class="meta">${s.manual ? 'ditandai manual' : 'terdeteksi otomatis dari pasangan Nama + NIP'}</div>
+        <div class="found-name">${escapeHtml(label)}<span class="page-tag">Hal. ${s.page+1}</span>${borderTag}</div>
+        <div class="meta">${s.manual ? 'ditandai manual' : ('terdeteksi otomatis dari pasangan Nama + NIP' + nip)}</div>
       </div>
     `;
     const cb = row.querySelector('input');
@@ -522,24 +649,75 @@ applyBtn.addEventListener('click', async () => {
     alert('Pilih minimal satu lokasi terlebih dahulu.');
     return;
   }
+  const shift = parseFloat(shiftAmountInput.value) || 0;
+
   applyBtn.disabled = true;
   applyBtn.textContent = 'Memproses...';
 
   try{
     const workingCopy = originalBytes.slice(0);
     const pdfDoc = await PDFLib.PDFDocument.load(workingCopy);
-    const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaOblique);
+    const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+    const fontOblique = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaOblique);
     const pages = pdfDoc.getPages();
 
     for (const s of active){
       const page = pages[s.page];
-      const fontSize = Math.max(8, Math.min(10, (s.h || 11) * 0.72));
+
+      if (s.manual){
+        const fontSize = Math.max(8, Math.min(10, (s.h || 11) * 0.72));
+        page.drawText(STAMP_TEXT, {
+          x: s.x, y: s.y + s.h + 3, size: fontSize, font: fontOblique,
+          color: PDFLib.rgb(0.45, 0.45, 0.45)
+        });
+        continue;
+      }
+
+      const name = s.nameLine, nip = s.nipLine;
+      const nameFontSize = Math.max(8, name.h * 0.78);
+      const nipFontSize = Math.max(8, nip.h * 0.78);
+
+      // 1) white-out the original name + NIP block (and a bit of margin)
+      const blockLeft = Math.min(name.minX, nip.minX) - 3;
+      const blockRight = Math.max(name.maxX, nip.maxX) + 6;
+      const blockTop = name.y + name.h + 2;
+      const blockBottom = nip.y - 3;
+      page.drawRectangle({
+        x: blockLeft, y: blockBottom,
+        width: blockRight - blockLeft, height: blockTop - blockBottom,
+        color: PDFLib.rgb(1,1,1)
+      });
+
+      // 2) redraw name & NIP shifted down
+      page.drawText(name.text, {
+        x: name.minX, y: name.y - shift, size: nameFontSize, font,
+        color: PDFLib.rgb(0,0,0)
+      });
+      page.drawText(nip.text, {
+        x: nip.minX, y: nip.y - shift, size: nipFontSize, font,
+        color: PDFLib.rgb(0,0,0)
+      });
+
+      // 3) border line: white-out old, redraw shifted
+      if (s.borderLine){
+        const bl = s.borderLine;
+        page.drawRectangle({
+          x: bl.x1 - 2, y: bl.y - 2.5,
+          width: (bl.x2 - bl.x1) + 4, height: 5,
+          color: PDFLib.rgb(1,1,1)
+        });
+        page.drawLine({
+          start: { x: bl.x1, y: bl.y - shift },
+          end:   { x: bl.x2, y: bl.y - shift },
+          thickness: 0.9,
+          color: PDFLib.rgb(0,0,0)
+        });
+      }
+
+      // 4) gray stamp text, just above the (now shifted) name
       page.drawText(STAMP_TEXT, {
-        x: s.x,
-        y: s.y + s.h + 3,
-        size: fontSize,
-        font,
-        color: PDFLib.rgb(0.45, 0.45, 0.45)
+        x: name.minX, y: (name.y - shift) + name.h + 3, size: nameFontSize * 0.85,
+        font: fontOblique, color: PDFLib.rgb(0.45, 0.45, 0.45)
       });
     }
 
