@@ -452,7 +452,7 @@
     <div class="panel-simple">
       <div class="panel-inner">
         <h2>Tanda Tangan Elektronik (TTE)</h2>
-        <p class="lead">Tambahkan satu atau beberapa dokumen PDF (akan digabung berurutan), lalu isi nama penandatangan. Blok "Ditandatangani secara elektronik" beserta nama akan ditempel di pojok kanan atas halaman terakhir.</p>
+        <p class="lead">Tambahkan satu atau beberapa dokumen PDF (akan digabung berurutan), lalu isi nama penandatangan. Aplikasi akan mencari setiap kemunculan nama itu di seluruh halaman dokumen, dan menempelkan teks "Ditandatangani secara elektronik" tepat di atasnya.</p>
         <div class="drop-area" id="tteDropArea">
           <div>📄 Klik atau seret file PDF ke sini</div>
           <p>Bisa pilih banyak file sekaligus, atur ulang urutannya di bawah</p>
@@ -470,7 +470,7 @@
           </label>
         </div>
 
-        <div class="note">Susunan blok tanda tangan dari atas ke bawah: teks "Ditandatangani secara elektronik" (abu-abu), lalu Nama 1, lalu Nama 2. Kosongkan salah satu kotak nama kalau cuma butuh 1 nama.</div>
+        <div class="note">Nama harus sama persis (tanpa memandang huruf besar/kecil) dengan yang tertulis di dalam dokumen supaya bisa ditemukan. Kosongkan salah satu kotak nama kalau cuma butuh 1 nama.</div>
       </div>
     </div>
   </section>
@@ -1386,8 +1386,9 @@ function renderTteList(){
 }
 
 tteBtn.onclick = async ()=>{
-  setBusy(true, 'Menggabungkan & menerapkan TTE...');
+  setBusy(true, 'Menggabungkan PDF...');
   try{
+    // 1) Gabungkan semua file jadi satu dokumen
     const outDoc = await PDFDocument.create();
     for(const f of tteFiles){
       const src = await PDFDocument.load(f.bytes.slice(0));
@@ -1395,40 +1396,50 @@ tteBtn.onclick = async ()=>{
       copied.forEach(p=>outDoc.addPage(p));
     }
 
-    const pages = outDoc.getPages();
-    if(pages.length){
-      const lastPage = pages[pages.length - 1];
-      const { width, height } = lastPage.getSize();
+    const names = [tteNama1.value, tteNama2.value].map(s=>(s||'').trim()).filter(Boolean);
+
+    if(names.length){
+      // 2) Simpan sementara, baca ulang lewat pdf.js untuk cari posisi tiap kemunculan nama
+      const mergedBytes = await outDoc.save();
+      const pdfjsDoc = await pdfjsLib.getDocument({data: mergedBytes.slice(0)}).promise;
+
       const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
-      const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
-
-      const nama1 = (tteNama1.value || '').trim();
-      const nama2 = (tteNama2.value || '').trim();
-
-      const marginRight = 36;
-      const rightEdge = width - marginRight;
       const labelSize = 9;
-      const nameSize = 11;
-      let cursorY = height - 40;
-
       const labelText = 'Ditandatangani secara elektronik';
-      const labelWidth = fontReg.widthOfTextAtSize(labelText, labelSize);
-      lastPage.drawText(labelText, {
-        x: rightEdge - labelWidth, y: cursorY, size: labelSize, font: fontReg, color: rgb(0.55,0.55,0.55)
-      });
-      cursorY -= (labelSize + 8);
+      const labelColor = rgb(0.55,0.55,0.55);
+      const namesUpper = names.map(n=>n.toUpperCase());
+      const outPages = outDoc.getPages();
+      let totalStamped = 0;
 
-      if(nama1){
-        const w = fontBold.widthOfTextAtSize(nama1, nameSize);
-        lastPage.drawText(nama1, { x: rightEdge - w, y: cursorY, size: nameSize, font: fontBold, color: rgb(0.09,0.1,0.11) });
-        cursorY -= (nameSize + 6);
+      for(let i=1;i<=pdfjsDoc.numPages;i++){
+        setBusy(true, `Mencari nama di halaman ${i}/${pdfjsDoc.numPages}...`);
+        const page = await pdfjsDoc.getPage(i);
+        const tc = await page.getTextContent();
+        const rows = clusterRows(tc.items, 3); // baris teks per-halaman (item.transform sudah dalam satuan PDF, sama seperti koordinat pdf-lib)
+        const outPage = outPages[i-1];
+        if(!outPage) continue;
+
+        rows.forEach(row=>{
+          const lineText = row.map(it=>it.str).join(' ').replace(/\s+/g,' ').trim().toUpperCase();
+          if(!lineText) return;
+          if(!namesUpper.some(n => lineText.includes(n))) return;
+          const firstItem = row[0];
+          const x = firstItem.transform[4];
+          const y = firstItem.transform[5];
+          const lineHeight = firstItem.height || 10;
+          outPage.drawText(labelText, {
+            x, y: y + lineHeight + 3, size: labelSize, font: fontReg, color: labelColor
+          });
+          totalStamped++;
+        });
       }
-      if(nama2){
-        const w = fontBold.widthOfTextAtSize(nama2, nameSize);
-        lastPage.drawText(nama2, { x: rightEdge - w, y: cursorY, size: nameSize, font: fontBold, color: rgb(0.09,0.1,0.11) });
+
+      if(totalStamped === 0){
+        showHint('Nama tidak ditemukan persis di dalam teks dokumen — cek lagi ejaannya (tidak ditempel).');
       }
     }
 
+    setBusy(true, 'Menyimpan PDF...');
     const bytes = await outDoc.save();
     downloadBlob(bytes, 'application/pdf', 'tte-gabungan.pdf');
   }catch(err){
