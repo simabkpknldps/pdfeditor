@@ -384,6 +384,7 @@
   <button class="navtab" data-tab="rotate">Rotate Halaman</button>
   <button class="navtab" data-tab="compress">Compress</button>
   <button class="navtab" data-tab="convert">Konversi File</button>
+  <button class="navtab" data-tab="tte">TTE</button>
 </div>
 
 <div id="main">
@@ -436,6 +437,40 @@
           <p>Bisa pilih banyak file sekaligus</p>
         </div>
         <div class="file-list" id="mergeList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TTE PANEL ================= -->
+  <section class="panel" id="panel-tte">
+    <div class="tool-toolbar">
+      <button class="tool" id="tteAddFiles">+ Tambah Dokumen</button>
+      <input type="file" id="tteFileInput" accept="application/pdf" multiple hidden>
+      <div class="toolbar-spacer"></div>
+      <button class="tool primary" id="tteBtn" disabled>Terapkan TTE &amp; Unduh</button>
+    </div>
+    <div class="panel-simple">
+      <div class="panel-inner">
+        <h2>Tanda Tangan Elektronik (TTE)</h2>
+        <p class="lead">Tambahkan satu atau beberapa dokumen PDF (akan digabung berurutan), lalu isi nama penandatangan. Blok "Ditandatangani secara elektronik" beserta nama akan ditempel di pojok kanan atas halaman terakhir.</p>
+        <div class="drop-area" id="tteDropArea">
+          <div>📄 Klik atau seret file PDF ke sini</div>
+          <p>Bisa pilih banyak file sekaligus, atur ulang urutannya di bawah</p>
+        </div>
+        <div class="file-list" id="tteList"></div>
+
+        <div style="margin-top:26px;display:flex;flex-direction:column;gap:14px;max-width:360px;">
+          <label style="font-family:var(--mono);font-size:11.5px;color:#7a7568;">Nama 1
+            <input type="text" id="tteNama1" placeholder="Nama penandatangan 1"
+              style="width:100%;margin-top:5px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-family:var(--body);font-size:14px;box-sizing:border-box;">
+          </label>
+          <label style="font-family:var(--mono);font-size:11.5px;color:#7a7568;">Nama 2
+            <input type="text" id="tteNama2" placeholder="Nama penandatangan 2"
+              style="width:100%;margin-top:5px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font-family:var(--body);font-size:14px;box-sizing:border-box;">
+          </label>
+        </div>
+
+        <div class="note">Susunan blok tanda tangan dari atas ke bawah: teks "Ditandatangani secara elektronik" (abu-abu), lalu Nama 1, lalu Nama 2. Kosongkan salah satu kotak nama kalau cuma butuh 1 nama.</div>
       </div>
     </div>
   </section>
@@ -1290,6 +1325,115 @@ mergeBtn.onclick = async ()=>{
   }catch(err){
     console.error(err);
     showHint('Gagal menggabungkan PDF. Pastikan semua file valid.');
+  }
+  setBusy(false);
+};
+
+/* =====================================================
+   TTE (Tanda Tangan Elektronik) — gabung dokumen + blok tanda tangan
+   ===================================================== */
+const tteFileInput = document.getElementById('tteFileInput');
+const tteAddFiles = document.getElementById('tteAddFiles');
+const tteDropArea = document.getElementById('tteDropArea');
+const tteList = document.getElementById('tteList');
+const tteBtn = document.getElementById('tteBtn');
+const tteNama1 = document.getElementById('tteNama1');
+const tteNama2 = document.getElementById('tteNama2');
+let tteFiles = []; // {name, bytes}
+
+tteAddFiles.onclick = ()=>tteFileInput.click();
+tteDropArea.onclick = ()=>tteFileInput.click();
+tteDropArea.addEventListener('dragover', e=>{ e.preventDefault(); tteDropArea.style.borderColor='var(--accent)'; });
+tteDropArea.addEventListener('dragleave', ()=>{ tteDropArea.style.borderColor=''; });
+tteDropArea.addEventListener('drop', async e=>{
+  e.preventDefault();
+  tteDropArea.style.borderColor='';
+  await addTteFiles(e.dataTransfer.files);
+});
+tteFileInput.addEventListener('change', async e=>{
+  await addTteFiles(e.target.files);
+  tteFileInput.value='';
+});
+
+async function addTteFiles(fileList){
+  for(const f of fileList){
+    if(f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) continue;
+    const bytes = await f.arrayBuffer();
+    tteFiles.push({name:f.name, bytes});
+  }
+  renderTteList();
+}
+
+function renderTteList(){
+  tteList.innerHTML = '';
+  tteFiles.forEach((f, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `
+      <span style="font-family:var(--mono);font-size:11px;color:#7a7568;">${idx+1}</span>
+      <span class="fname">${f.name}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:#9aa0a8;">${fmtBytes(f.bytes.byteLength)}</span>
+      <button data-act="up">↑</button>
+      <button data-act="down">↓</button>
+      <button data-act="remove">Hapus</button>
+    `;
+    row.querySelector('[data-act="up"]').onclick = ()=>{ if(idx>0){ [tteFiles[idx-1],tteFiles[idx]]=[tteFiles[idx],tteFiles[idx-1]]; renderTteList(); } };
+    row.querySelector('[data-act="down"]').onclick = ()=>{ if(idx<tteFiles.length-1){ [tteFiles[idx+1],tteFiles[idx]]=[tteFiles[idx],tteFiles[idx+1]]; renderTteList(); } };
+    row.querySelector('[data-act="remove"]').onclick = ()=>{ tteFiles.splice(idx,1); renderTteList(); };
+    tteList.appendChild(row);
+  });
+  tteBtn.disabled = tteFiles.length < 1;
+}
+
+tteBtn.onclick = async ()=>{
+  setBusy(true, 'Menggabungkan & menerapkan TTE...');
+  try{
+    const outDoc = await PDFDocument.create();
+    for(const f of tteFiles){
+      const src = await PDFDocument.load(f.bytes.slice(0));
+      const copied = await outDoc.copyPages(src, src.getPageIndices());
+      copied.forEach(p=>outDoc.addPage(p));
+    }
+
+    const pages = outDoc.getPages();
+    if(pages.length){
+      const lastPage = pages[pages.length - 1];
+      const { width, height } = lastPage.getSize();
+      const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
+      const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
+
+      const nama1 = (tteNama1.value || '').trim();
+      const nama2 = (tteNama2.value || '').trim();
+
+      const marginRight = 36;
+      const rightEdge = width - marginRight;
+      const labelSize = 9;
+      const nameSize = 11;
+      let cursorY = height - 40;
+
+      const labelText = 'Ditandatangani secara elektronik';
+      const labelWidth = fontReg.widthOfTextAtSize(labelText, labelSize);
+      lastPage.drawText(labelText, {
+        x: rightEdge - labelWidth, y: cursorY, size: labelSize, font: fontReg, color: rgb(0.55,0.55,0.55)
+      });
+      cursorY -= (labelSize + 8);
+
+      if(nama1){
+        const w = fontBold.widthOfTextAtSize(nama1, nameSize);
+        lastPage.drawText(nama1, { x: rightEdge - w, y: cursorY, size: nameSize, font: fontBold, color: rgb(0.09,0.1,0.11) });
+        cursorY -= (nameSize + 6);
+      }
+      if(nama2){
+        const w = fontBold.widthOfTextAtSize(nama2, nameSize);
+        lastPage.drawText(nama2, { x: rightEdge - w, y: cursorY, size: nameSize, font: fontBold, color: rgb(0.09,0.1,0.11) });
+      }
+    }
+
+    const bytes = await outDoc.save();
+    downloadBlob(bytes, 'application/pdf', 'tte-gabungan.pdf');
+  }catch(err){
+    console.error(err);
+    showHint('Gagal menerapkan TTE. Pastikan semua file valid.');
   }
   setBusy(false);
 };
