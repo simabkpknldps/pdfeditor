@@ -1428,12 +1428,8 @@ tteBtn.onclick = async ()=>{
       const namesUpper = names.map(n=>n.toUpperCase());
       const outPages = outDoc.getPages();
       let totalStamped = 0;
-      const allMatches = [];
 
-      // Cari SEMUA kemunculan Nama 1 dan Nama 2 di seluruh dokumen terlebih dahulu.
-      // Jangan langsung menempelkan label, karena kita perlu menentukan posisi
-      // nama yang paling bawah dari seluruh dokumen.
-      for(let i=1;i<=pdfjsDoc.numPages;i++){
+      for(let i=1; i<=pdfjsDoc.numPages; i++){
         setBusy(true, `Mencari nama di halaman ${i}/${pdfjsDoc.numPages}...`);
         const page = await pdfjsDoc.getPage(i);
         const tc = await page.getTextContent();
@@ -1441,57 +1437,37 @@ tteBtn.onclick = async ()=>{
         const outPage = outPages[i-1];
         if(!outPage) continue;
 
-        rows.forEach(row=>{
-          const lineText = row.map(it=>it.str).join(' ').replace(/\s+/g,' ').trim().toUpperCase();
-          if(!lineText) return;
+        // Loop per nama target (Nama 1 & Nama 2)
+        namesUpper.forEach(nameUpper => {
+          let lowestMatch = null;
 
-          namesUpper.forEach((nameUpper, nameIndex)=>{
-            if(!lineText.includes(nameUpper)) return;
+          // Cari semua baris yang memuat nama target pada halaman ini
+          rows.forEach(row => {
+            const lineText = row.map(it=>it.str).join(' ').replace(/\s+/g,' ').trim().toUpperCase();
+            if(!lineText || !lineText.includes(nameUpper)) return;
+
             const startItem = findNameStartItemInRow(row, nameUpper) || row[0];
-            allMatches.push({
-              nameIndex,
-              nameUpper,
-              pageIndex: i - 1,
-              x: startItem.transform[4],
-              y: startItem.transform[5],
-              lineHeight: startItem.height || 10
+            const x = startItem.transform[4];
+            const y = startItem.transform[5]; // Koordinat Y pada PDF (0 di paling bawah)
+            const lineHeight = startItem.height || 10;
+
+            // Simpan atau perbarui jika posisi Y ini lebih bawah (nilai Y lebih kecil)
+            if (lowestMatch === null || y < lowestMatch.y) {
+              lowestMatch = { x, y, lineHeight };
+            }
+          });
+
+          // Tempel stempel TTE HANYA pada posisi yang paling bawah di halaman tersebut
+          if (lowestMatch) {
+            outPage.drawText(labelText, {
+              x: lowestMatch.x,
+              y: lowestMatch.y + lowestMatch.lineHeight + 3,
+              size: labelSize,
+              font: fontReg,
+              color: labelColor
             });
-          });
-        });
-      }
-
-      if(allMatches.length){
-        // Jika salah satu nama muncul lebih dari sekali, hanya tempel SATU label,
-        // yaitu pada nama yang posisinya paling bawah di seluruh dokumen.
-        const counts = namesUpper.map((_, idx) =>
-          allMatches.filter(m => m.nameIndex === idx).length
-        );
-        const hasDuplicate = counts.some(count => count > 1);
-
-        let selectedMatches;
-        if(hasDuplicate){
-          const selected = allMatches.reduce((lowest, current) => {
-            if(current.pageIndex > lowest.pageIndex) return current;
-            if(current.pageIndex < lowest.pageIndex) return lowest;
-            return current.y < lowest.y ? current : lowest;
-          });
-          selectedMatches = [selected];
-        }else{
-          // Jika masing-masing nama hanya ditemukan satu kali, tempel pada
-          // masing-masing nama seperti perilaku sebelumnya.
-          selectedMatches = allMatches;
-        }
-
-        selectedMatches.forEach(selected=>{
-          const outPage = outPages[selected.pageIndex];
-          outPage.drawText(labelText, {
-            x: selected.x,
-            y: selected.y + selected.lineHeight + 3,
-            size: labelSize,
-            font: fontReg,
-            color: labelColor
-          });
-          totalStamped++;
+            totalStamped++;
+          }
         });
       }
 
@@ -1499,6 +1475,16 @@ tteBtn.onclick = async ()=>{
         showHint('Nama tidak ditemukan persis di dalam teks dokumen — cek lagi ejaannya (tidak ditempel).');
       }
     }
+
+    setBusy(true, 'Menyimpan PDF...');
+    const bytes = await outDoc.save();
+    downloadBlob(bytes, 'application/pdf', 'tte-gabungan.pdf');
+  }catch(err){
+    console.error(err);
+    showHint('Gagal menerapkan TTE. Pastikan semua file valid.');
+  }
+  setBusy(false);
+};
 
     setBusy(true, 'Menyimpan PDF...');
     const bytes = await outDoc.save();
