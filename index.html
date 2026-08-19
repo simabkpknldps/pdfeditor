@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alat Gabung, Urutkan, Kompres, Edit & TTE PDF</title>
+  <title>Alat Gabung, Urutkan, Kompres & TTE PDF</title>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -18,7 +18,7 @@
       border-radius: 10px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       width: 100%;
-      max-width: 650px;
+      max-width: 550px;
     }
     h2 {
       margin-top: 0;
@@ -34,7 +34,7 @@
       font-weight: bold;
       color: #555;
     }
-    input[type="text"], input[type="file"], input[type="number"], select {
+    input[type="text"], input[type="file"], select {
       width: 100%;
       padding: 10px;
       border: 1px solid #ccc;
@@ -68,7 +68,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      max-width: 350px;
+      max-width: 280px;
     }
     .file-actions button {
       padding: 3px 6px;
@@ -80,21 +80,6 @@
     }
     .file-actions button:hover {
       background-color: #5a6268;
-    }
-
-    .section-box {
-      border: 1px dashed #ccc;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 15px;
-      background-color: #fafafa;
-    }
-
-    .section-title {
-      font-size: 15px;
-      font-weight: bold;
-      color: #0066cc;
-      margin-bottom: 10px;
     }
 
     button {
@@ -147,68 +132,14 @@
 <body>
 
   <div class="container">
-    <h2>Gabung, Kompres, Edit & TTE PDF</h2>
+    <h2>Gabung, Kompres & TTE PDF</h2>
     
     <div class="form-group">
       <label>Pilih File PDF (Bisa lebih dari 1 file):</label>
       <input type="file" id="fileInput" accept="application/pdf" multiple>
+      
+      <!-- Kontainer untuk mengatur urutan file -->
       <div id="fileListContainer"></div>
-    </div>
-
-    <!-- MENU TAMBAHAN: EDIT TEKS / TAMBAH CATATAN -->
-    <div class="section-box">
-      <div class="section-title">✏️ Tambah / Sisipkan Teks Bebas (Opsional)</div>
-      <div class="form-group">
-        <label>Teks Tambahan:</label>
-        <input type="text" id="customText" placeholder="Contoh: Disetujui / Catatan Tambahan">
-      </div>
-      <div style="display: flex; gap: 10px;">
-        <div class="form-group" style="flex: 1;">
-          <label>Halaman Ke:</label>
-          <input type="number" id="textPage" min="1" value="1">
-        </div>
-        <div class="form-group" style="flex: 1;">
-          <label>Posisi X (Kiri):</label>
-          <input type="number" id="textX" value="100">
-        </div>
-        <div class="form-group" style="flex: 1;">
-          <label>Posisi Y (Bawah):</label>
-          <input type="number" id="textY" value="100">
-        </div>
-      </div>
-    </div>
-
-    <!-- MENU TAMBAHAN: TAMBAHKAN GAMBAR / TANDA TANGAN -->
-    <div class="section-box">
-      <div class="section-title">🖼️ Sisipkan Gambar / Tanda Tangan (Opsional)</div>
-      <div class="form-group">
-        <label>Pilih File Gambar (PNG/JPG):</label>
-        <input type="file" id="imageInput" accept="image/png, image/jpeg">
-      </div>
-      <div style="display: flex; gap: 10px;">
-        <div class="form-group" style="flex: 1;">
-          <label>Halaman Ke:</label>
-          <input type="number" id="imgPage" min="1" value="1">
-        </div>
-        <div class="form-group" style="flex: 1;">
-          <label>Posisi X:</label>
-          <input type="number" id="imgX" value="100">
-        </div>
-        <div class="form-group" style="flex: 1;">
-          <label>Posisi Y:</label>
-          <input type="number" id="imgY" value="100">
-        </div>
-      </div>
-      <div style="display: flex; gap: 10px;">
-        <div class="form-group" style="flex: 1;">
-          <label>Lebar (Width):</label>
-          <input type="number" id="imgWidth" value="120">
-        </div>
-        <div class="form-group" style="flex: 1;">
-          <label>Tinggi (Height):</label>
-          <input type="number" id="imgHeight" value="50">
-        </div>
-      </div>
     </div>
 
     <div class="form-group">
@@ -217,12 +148,12 @@
         <option value="none">Tanpa Kompresi (Asli)</option>
         <option value="low">Rendah (Sedikit Kompresi)</option>
         <option value="medium" selected>Sedang (Direkomendasikan)</option>
-        <option value="high">Hinggi (Ukuran Paling Kecil)</option>
+        <option value="high">Tinggi (Ukuran Paling Kecil)</option>
       </select>
     </div>
 
     <div class="form-group">
-      <label>Nama 1 (Untuk Stempel TTE Otomatis):</label>
+      <label>Nama 1 (Untuk Stempel TTE):</label>
       <input type="text" id="tteNama1" placeholder="Contoh: ACHMAD CHABIB NURSALIM">
     </div>
 
@@ -242,7 +173,6 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
     const fileInput = document.getElementById('fileInput');
-    const imageInput = document.getElementById('imageInput');
     const fileListContainer = document.getElementById('fileListContainer');
     const compressionLevel = document.getElementById('compressionLevel');
     const tteNama1 = document.getElementById('tteNama1');
@@ -251,10 +181,9 @@
     const statusOverlay = document.getElementById('statusOverlay');
     const hintBox = document.getElementById('hint');
 
-    let tteFiles = [];
-    let customImageBytes = null;
-    let customImageDataType = null;
+    let tteFiles = []; // Menyimpan array objek file
 
+    // Event saat file dipilih
     fileInput.addEventListener('change', async (e) => {
       tteFiles = [];
       for (const file of e.target.files) {
@@ -264,17 +193,7 @@
       renderFileList();
     });
 
-    imageInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        customImageBytes = await file.arrayBuffer();
-        customImageDataType = file.type;
-      } else {
-        customImageBytes = null;
-        customImageDataType = null;
-      }
-    });
-
+    // Render ulang daftar urutan file di UI beserta tombol geser atas/bawah/hapus
     function renderFileList() {
       fileListContainer.innerHTML = '';
       if (tteFiles.length === 0) {
@@ -293,16 +212,19 @@
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'file-actions';
 
+        // Tombol Naik
         const upBtn = document.createElement('button');
         upBtn.innerText = '▲';
         upBtn.disabled = index === 0;
         upBtn.onclick = () => moveFile(index, index - 1);
 
+        // Tombol Turun
         const downBtn = document.createElement('button');
         downBtn.innerText = '▼';
         downBtn.disabled = index === tteFiles.length - 1;
         downBtn.onclick = () => moveFile(index, index + 1);
 
+        // Tombol Hapus
         const delBtn = document.createElement('button');
         delBtn.innerText = '✕';
         delBtn.style.backgroundColor = '#dc3545';
@@ -391,6 +313,7 @@
       try {
         const { PDFDocument, StandardFonts, rgb } = PDFLib;
         
+        // 1) Gabungkan file sesuai urutan kustom pada tteFiles
         const outDoc = await PDFDocument.create();
         for (const f of tteFiles) {
           const src = await PDFDocument.load(f.bytes.slice(0));
@@ -398,59 +321,15 @@
           copied.forEach(p => outDoc.addPage(p));
         }
 
-        const pages = outDoc.getPages();
-        const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
-
-        // 1) Tambah Teks Kustom jika diisi
-        const customTextVal = document.getElementById('customText').value.trim();
-        if (customTextVal) {
-          const pIdx = parseInt(document.getElementById('textPage').value) - 1;
-          const xVal = parseFloat(document.getElementById('textX').value) || 0;
-          const yVal = parseFloat(document.getElementById('textY').value) || 0;
-          if (pages[pIdx]) {
-            pages[pIdx].drawText(customTextVal, {
-              x: xVal,
-              y: yVal,
-              size: 11,
-              font: fontReg,
-              color: rgb(0, 0, 0)
-            });
-          }
-        }
-
-        // 2) Tambah Gambar Kustom jika diunggah
-        if (customImageBytes) {
-          const pIdx = parseInt(document.getElementById('imgPage').value) - 1;
-          const xVal = parseFloat(document.getElementById('imgX').value) || 0;
-          const yVal = parseFloat(document.getElementById('imgY').value) || 0;
-          const wVal = parseFloat(document.getElementById('imgWidth').value) || 100;
-          const hVal = parseFloat(document.getElementById('imgHeight').value) || 50;
-
-          if (pages[pIdx]) {
-            let embeddedImg;
-            if (customImageDataType === 'image/png') {
-              embeddedImg = await outDoc.embedPng(customImageBytes);
-            } else {
-              embeddedImg = await outDoc.embedJpg(customImageBytes);
-            }
-            pages[pIdx].drawImage(embeddedImg, {
-              x: xVal,
-              y: yVal,
-              width: wVal,
-              height: hVal,
-            });
-          }
-        }
-
-        // 3) Stempel TTE Otomatis berdasarkan Nama
         const names = [tteNama1.value, tteNama2.value]
           .map(s => (s || '').trim())
           .filter(Boolean);
 
         if (names.length > 0) {
-          const intermediateBytes = await outDoc.save();
-          const pdfjsDoc = await pdfjsLib.getDocument({ data: intermediateBytes.slice(0) }).promise;
+          const mergedBytes = await outDoc.save();
+          const pdfjsDoc = await pdfjsLib.getDocument({ data: mergedBytes.slice(0) }).promise;
 
+          const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
           const labelSize = 9;
           const labelText = 'Ditandatangani secara elektronik';
           const labelColor = rgb(0.55, 0.55, 0.55);
@@ -507,16 +386,20 @@
 
         setBusy(true, 'Menyiapkan & Mengompres PDF...');
         
+        // 2) Atur opsi kompresi berdasarkan pilihan user
         const compVal = compressionLevel.value;
         let saveOptions = {};
         if (compVal === 'low') {
           saveOptions = { useObjectStreams: true };
-        } else if (compVal === 'medium' || compVal === 'high') {
+        } else if (compVal === 'medium') {
+          saveOptions = { useObjectStreams: true, addDefaultPage: false };
+        } else if (compVal === 'high') {
+          // Kompresi agresif tambahan dengan mengonversi gambar jika dibutuhkan / optimasi objek
           saveOptions = { useObjectStreams: true, addDefaultPage: false };
         }
 
         const bytes = await outDoc.save(saveOptions);
-        downloadBlob(bytes, 'application/pdf', 'Dokumen_Gabungan_Edit_TTE.pdf');
+        downloadBlob(bytes, 'application/pdf', 'Dokumen_Gabungan_TTE.pdf');
         
       } catch (err) {
         console.error(err);
