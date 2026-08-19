@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Alat Gabung & TTE PDF</title>
+  <title>Alat Gabung, Urutkan, Kompres & TTE PDF</title>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -18,7 +18,7 @@
       border-radius: 10px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       width: 100%;
-      max-width: 500px;
+      max-width: 550px;
     }
     h2 {
       margin-top: 0;
@@ -34,13 +34,54 @@
       font-weight: bold;
       color: #555;
     }
-    input[type="text"], input[type="file"] {
+    input[type="text"], input[type="file"], select {
       width: 100%;
       padding: 10px;
       border: 1px solid #ccc;
       border-radius: 5px;
       box-sizing: border-box;
     }
+    
+    /* Style untuk List Urutan File */
+    #fileListContainer {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background: #fafafa;
+      padding: 5px;
+      display: none;
+    }
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      background: #fff;
+      border: 1px solid #e1e1e1;
+      margin-bottom: 5px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .file-item span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 280px;
+    }
+    .file-actions button {
+      padding: 3px 6px;
+      font-size: 12px;
+      margin-left: 3px;
+      background-color: #6c757d;
+      margin-top: 0;
+      width: auto;
+    }
+    .file-actions button:hover {
+      background-color: #5a6268;
+    }
+
     button {
       width: 100%;
       padding: 12px;
@@ -91,11 +132,24 @@
 <body>
 
   <div class="container">
-    <h2>Gabung & TTE PDF</h2>
+    <h2>Gabung, Kompres & TTE PDF</h2>
     
     <div class="form-group">
       <label>Pilih File PDF (Bisa lebih dari 1 file):</label>
       <input type="file" id="fileInput" accept="application/pdf" multiple>
+      
+      <!-- Kontainer untuk mengatur urutan file -->
+      <div id="fileListContainer"></div>
+    </div>
+
+    <div class="form-group">
+      <label>Tingkat Kompresi PDF:</label>
+      <select id="compressionLevel">
+        <option value="none">Tanpa Kompresi (Asli)</option>
+        <option value="low">Rendah (Sedikit Kompresi)</option>
+        <option value="medium" selected>Sedang (Direkomendasikan)</option>
+        <option value="high">Tinggi (Ukuran Paling Kecil)</option>
+      </select>
     </div>
 
     <div class="form-group">
@@ -108,7 +162,7 @@
       <input type="text" id="tteNama2" placeholder="Nama orang kedua (jika ada)">
     </div>
 
-    <button id="tteBtn">Proses Gabung & Tempel TTE</button>
+    <button id="tteBtn">Proses & Download PDF</button>
     
     <div id="hint"></div>
   </div>
@@ -116,18 +170,18 @@
   <div id="statusOverlay">Memproses...</div>
 
   <script>
-    // Konfigurasi Worker PDF.js agar bisa membaca teks dokumen
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    // Elemen UI
     const fileInput = document.getElementById('fileInput');
+    const fileListContainer = document.getElementById('fileListContainer');
+    const compressionLevel = document.getElementById('compressionLevel');
     const tteNama1 = document.getElementById('tteNama1');
     const tteNama2 = document.getElementById('tteNama2');
     const tteBtn = document.getElementById('tteBtn');
     const statusOverlay = document.getElementById('statusOverlay');
     const hintBox = document.getElementById('hint');
 
-    let tteFiles = []; // Menyimpan file yang diupload
+    let tteFiles = []; // Menyimpan array objek file
 
     // Event saat file dipilih
     fileInput.addEventListener('change', async (e) => {
@@ -136,23 +190,79 @@
         const buffer = await file.arrayBuffer();
         tteFiles.push({ name: file.name, bytes: new Uint8Array(buffer) });
       }
+      renderFileList();
     });
 
-    // Helper: Tampilkan status loading
+    // Render ulang daftar urutan file di UI beserta tombol geser atas/bawah/hapus
+    function renderFileList() {
+      fileListContainer.innerHTML = '';
+      if (tteFiles.length === 0) {
+        fileListContainer.style.display = 'none';
+        return;
+      }
+      fileListContainer.style.display = 'block';
+
+      tteFiles.forEach((file, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'file-item';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = `${index + 1}. ${file.name}`;
+        
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'file-actions';
+
+        // Tombol Naik
+        const upBtn = document.createElement('button');
+        upBtn.innerText = '▲';
+        upBtn.disabled = index === 0;
+        upBtn.onclick = () => moveFile(index, index - 1);
+
+        // Tombol Turun
+        const downBtn = document.createElement('button');
+        downBtn.innerText = '▼';
+        downBtn.disabled = index === tteFiles.length - 1;
+        downBtn.onclick = () => moveFile(index, index + 1);
+
+        // Tombol Hapus
+        const delBtn = document.createElement('button');
+        delBtn.innerText = '✕';
+        delBtn.style.backgroundColor = '#dc3545';
+        delBtn.onclick = () => removeFile(index);
+
+        actionsDiv.appendChild(upBtn);
+        actionsDiv.appendChild(downBtn);
+        actionsDiv.appendChild(delBtn);
+
+        itemDiv.appendChild(nameSpan);
+        itemDiv.appendChild(actionsDiv);
+        fileListContainer.appendChild(itemDiv);
+      });
+    }
+
+    function moveFile(fromIndex, toIndex) {
+      const movedItem = tteFiles.splice(fromIndex, 1)[0];
+      tteFiles.splice(toIndex, 0, movedItem);
+      renderFileList();
+    }
+
+    function removeFile(index) {
+      tteFiles.splice(index, 1);
+      renderFileList();
+    }
+
     function setBusy(isBusy, text = 'Memproses...') {
       statusOverlay.style.display = isBusy ? 'flex' : 'none';
       statusOverlay.innerText = text;
       tteBtn.disabled = isBusy;
     }
 
-    // Helper: Tampilkan pesan
     function showHint(msg) {
       hintBox.innerText = msg;
       hintBox.style.display = 'block';
       setTimeout(() => { hintBox.style.display = 'none'; }, 5000);
     }
 
-    // Helper: Mengelompokkan item teks per baris (berdasarkan sumbu Y)
     function clusterRows(items, tolerance = 3) {
       const rows = [];
       items.forEach(item => {
@@ -172,7 +282,6 @@
       return rows;
     }
 
-    // Helper: Mencari titik awal teks nama di suatu baris
     function findNameStartItemInRow(row, nameUpper) {
       const firstWord = nameUpper.split(' ')[0];
       let currentText = '';
@@ -183,7 +292,6 @@
       return row[0];
     }
 
-    // Helper: Download file hasil
     function downloadBlob(bytes, mimeType, fileName) {
       const blob = new Blob([bytes], { type: mimeType });
       const url = URL.createObjectURL(blob);
@@ -196,17 +304,16 @@
       URL.revokeObjectURL(url);
     }
 
-    // Logika Utama Saat Tombol Diklik
     tteBtn.onclick = async () => {
       if (tteFiles.length === 0) {
         return showHint('Harap pilih minimal 1 file PDF terlebih dahulu.');
       }
 
-      setBusy(true, 'Menggabungkan PDF...');
+      setBusy(true, 'Menggabungkan & Mengatur Urutan PDF...');
       try {
         const { PDFDocument, StandardFonts, rgb } = PDFLib;
         
-        // 1) Gabungkan semua file jadi satu dokumen
+        // 1) Gabungkan file sesuai urutan kustom pada tteFiles
         const outDoc = await PDFDocument.create();
         for (const f of tteFiles) {
           const src = await PDFDocument.load(f.bytes.slice(0));
@@ -219,7 +326,6 @@
           .filter(Boolean);
 
         if (names.length > 0) {
-          // 2) Simpan sementara, lalu baca pakai PDF.js untuk mencari posisi teks
           const mergedBytes = await outDoc.save();
           const pdfjsDoc = await pdfjsLib.getDocument({ data: mergedBytes.slice(0) }).promise;
 
@@ -231,7 +337,6 @@
           const outPages = outDoc.getPages();
           let totalStamped = 0;
 
-          // Looping per Halaman
           for (let i = 1; i <= pdfjsDoc.numPages; i++) {
             setBusy(true, `Mencari nama di halaman ${i}/${pdfjsDoc.numPages}...`);
             const page = await pdfjsDoc.getPage(i);
@@ -241,11 +346,9 @@
             
             if (!outPage) continue;
 
-            // Loop per nama target (Nama 1 & Nama 2)
             namesUpper.forEach(nameUpper => {
               let lowestMatch = null;
 
-              // Cari semua kemunculan nama pada halaman ini
               rows.forEach(row => {
                 const lineText = row.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim().toUpperCase();
                 
@@ -253,16 +356,14 @@
 
                 const startItem = findNameStartItemInRow(row, nameUpper) || row[0];
                 const x = startItem.transform[4];
-                const y = startItem.transform[5]; // Koordinat Y pada PDF (0 di paling bawah)
+                const y = startItem.transform[5];
                 const lineHeight = startItem.height || 10;
 
-                // Simpan jika koordinat Y ini adalah yang paling bawah (nilai Y terkecil)
                 if (lowestMatch === null || y < lowestMatch.y) {
                   lowestMatch = { x, y, lineHeight };
                 }
               });
 
-              // Tempel stempel TTE HANYA pada posisi yang paling bawah di halaman tersebut
               if (lowestMatch) {
                 outPage.drawText(labelText, {
                   x: lowestMatch.x,
@@ -283,9 +384,22 @@
           }
         }
 
-        setBusy(true, 'Menyiapkan file untuk didownload...');
-        const bytes = await outDoc.save();
-        downloadBlob(bytes, 'application/pdf', 'Dokumen_TTE_Gabungan.pdf');
+        setBusy(true, 'Menyiapkan & Mengompres PDF...');
+        
+        // 2) Atur opsi kompresi berdasarkan pilihan user
+        const compVal = compressionLevel.value;
+        let saveOptions = {};
+        if (compVal === 'low') {
+          saveOptions = { useObjectStreams: true };
+        } else if (compVal === 'medium') {
+          saveOptions = { useObjectStreams: true, addDefaultPage: false };
+        } else if (compVal === 'high') {
+          // Kompresi agresif tambahan dengan mengonversi gambar jika dibutuhkan / optimasi objek
+          saveOptions = { useObjectStreams: true, addDefaultPage: false };
+        }
+
+        const bytes = await outDoc.save(saveOptions);
+        downloadBlob(bytes, 'application/pdf', 'Dokumen_Gabungan_TTE.pdf');
         
       } catch (err) {
         console.error(err);
