@@ -135,8 +135,9 @@
     <h2>Gabung, Kompres & TTE PDF</h2>
     
     <div class="form-group">
-      <label>Pilih File PDF (Bisa lebih dari 1 file):</label>
-      <input type="file" id="fileInput" accept="application/pdf" multiple>
+      <!-- Diperbarui agar bisa menerima PDF dan Gambar -->
+      <label>Pilih File (PDF / Gambar JPG / PNG):</label>
+      <input type="file" id="fileInput" accept="application/pdf, image/jpeg, image/png" multiple>
       
       <!-- Kontainer untuk mengatur urutan file -->
       <div id="fileListContainer"></div>
@@ -183,12 +184,16 @@
 
     let tteFiles = []; // Menyimpan array objek file
 
-    // Event saat file dipilih
+    // Event saat file dipilih (mendukung PDF & Gambar)
     fileInput.addEventListener('change', async (e) => {
       tteFiles = [];
       for (const file of e.target.files) {
-        const buffer = await file.arrayBuffer();
-        tteFiles.push({ name: file.name, bytes: new Uint8Array(buffer) });
+        const buffer = await file.arrayButton ? await file.arrayBuffer() : await file.arrayBuffer();
+        tteFiles.push({ 
+          name: file.name, 
+          bytes: new Uint8Array(buffer),
+          type: file.type 
+        });
       }
       renderFileList();
     });
@@ -306,19 +311,41 @@
 
     tteBtn.onclick = async () => {
       if (tteFiles.length === 0) {
-        return showHint('Harap pilih minimal 1 file PDF terlebih dahulu.');
+        return showHint('Harap pilih minimal 1 file (PDF atau Gambar) terlebih dahulu.');
       }
 
-      setBusy(true, 'Menggabungkan & Mengatur Urutan PDF...');
+      setBusy(true, 'Menggabungkan & Mengonversi File...');
       try {
         const { PDFDocument, StandardFonts, rgb } = PDFLib;
         
-        // 1) Gabungkan file sesuai urutan kustom pada tteFiles
+        // 1) Gabungkan file sesuai urutan kustom pada tteFiles (mendukung PDF & Gambar)
         const outDoc = await PDFDocument.create();
         for (const f of tteFiles) {
-          const src = await PDFDocument.load(f.bytes.slice(0));
-          const copied = await outDoc.copyPages(src, src.getPageIndices());
-          copied.forEach(p => outDoc.addPage(p));
+          if (f.type === 'image/jpeg' || f.name.toLowerCase().endsWith('.jpg') || f.name.toLowerCase().endsWith('.jpeg')) {
+            const img = await outDoc.embedJpg(f.bytes);
+            const page = outDoc.addPage([595.28, 841.89]); // Ukuran standar A4
+            const imgDims = img.scaleToFit(page.getWidth() - 40, page.getHeight() - 40);
+            page.drawImage(img, {
+              x: (page.getWidth() - imgDims.width) / 2,
+              y: (page.getHeight() - imgDims.height) / 2,
+              width: imgDims.width,
+              height: imgDims.height,
+            });
+          } else if (f.type === 'image/png' || f.name.toLowerCase().endsWith('.png')) {
+            const img = await outDoc.embedPng(f.bytes);
+            const page = outDoc.addPage([595.28, 841.89]); // Ukuran standar A4
+            const imgDims = img.scaleToFit(page.getWidth() - 40, page.getHeight() - 40);
+            page.drawImage(img, {
+              x: (page.getWidth() - imgDims.width) / 2,
+              y: (page.getHeight() - imgDims.height) / 2,
+              width: imgDims.width,
+              height: imgDims.height,
+            });
+          } else {
+            const src = await PDFDocument.load(f.bytes.slice(0));
+            const copied = await outDoc.copyPages(src, src.getPageIndices());
+            copied.forEach(p => outDoc.addPage(p));
+          }
         }
 
         const names = [tteNama1.value, tteNama2.value]
@@ -394,7 +421,6 @@
         } else if (compVal === 'medium') {
           saveOptions = { useObjectStreams: true, addDefaultPage: false };
         } else if (compVal === 'high') {
-          // Kompresi agresif tambahan dengan mengonversi gambar jika dibutuhkan / optimasi objek
           saveOptions = { useObjectStreams: true, addDefaultPage: false };
         }
 
@@ -403,7 +429,7 @@
         
       } catch (err) {
         console.error(err);
-        showHint('Terjadi kesalahan saat memproses PDF.');
+        showHint('Terjadi kesalahan saat memproses file.');
       }
       setBusy(false);
     };
