@@ -1,4 +1,306 @@
-tteBtn.onclick = async () => {
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alat Gabung, Urutkan, Kompres & TTE PDF</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f2f5;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      background-color: #fff;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 550px;
+    }
+    h2 {
+      margin-top: 0;
+      color: #333;
+      text-align: center;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #555;
+    }
+    input[type="text"], input[type="file"], select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    
+    /* Style untuk List Urutan File */
+    #fileListContainer {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      background: #fafafa;
+      padding: 5px;
+      display: none;
+    }
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      background: #fff;
+      border: 1px solid #e1e1e1;
+      margin-bottom: 5px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .file-item span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 280px;
+    }
+    .file-actions button {
+      padding: 3px 6px;
+      font-size: 12px;
+      margin-left: 3px;
+      background-color: #6c757d;
+      margin-top: 0;
+      width: auto;
+    }
+    .file-actions button:hover {
+      background-color: #5a6268;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #005bb5;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    #statusOverlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.8);
+      justify-content: center;
+      align-items: center;
+      font-size: 18px;
+      font-weight: bold;
+      color: #0066cc;
+      z-index: 1000;
+    }
+    #hint {
+      margin-top: 15px;
+      padding: 10px;
+      background-color: #ffeeba;
+      color: #856404;
+      border-radius: 5px;
+      display: none;
+      text-align: center;
+    }
+  </style>
+
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+</head>
+<body>
+
+  <div class="container">
+    <h2>Gabung, Kompres & TTE PDF</h2>
+    
+    <div class="form-group">
+      <label>Pilih File (PDF / Gambar JPG / PNG):</label>
+      <input type="file" id="fileInput" accept="application/pdf, image/jpeg, image/png" multiple>
+      
+      <div id="fileListContainer"></div>
+    </div>
+
+    <div class="form-group">
+      <label>Tingkat Kompresi PDF:</label>
+      <select id="compressionLevel">
+        <option value="none">Tanpa Kompresi (Asli)</option>
+        <option value="low">Rendah (Sedikit Kompresi)</option>
+        <option value="medium" selected>Sedang (Direkomendasikan)</option>
+        <option value="high">Tinggi (Ukuran Paling Kecil)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Nama 1 (Untuk Stempel TTE):</label>
+      <input type="text" id="tteNama1" placeholder="Contoh: ACHMAD CHABIB NURSALIM">
+    </div>
+
+    <div class="form-group">
+      <label>Nama 2 (Opsional):</label>
+      <input type="text" id="tteNama2" placeholder="Contoh: I KETUT ARIMBAWA">
+    </div>
+
+    <button id="tteBtn">Proses & Download PDF</button>
+    
+    <div id="hint"></div>
+  </div>
+
+  <div id="statusOverlay">Memproses...</div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    const fileInput = document.getElementById('fileInput');
+    const fileListContainer = document.getElementById('fileListContainer');
+    const compressionLevel = document.getElementById('compressionLevel');
+    const tteNama1 = document.getElementById('tteNama1');
+    const tteNama2 = document.getElementById('tteNama2');
+    const tteBtn = document.getElementById('tteBtn');
+    const statusOverlay = document.getElementById('statusOverlay');
+    const hintBox = document.getElementById('hint');
+
+    let tteFiles = [];
+
+    fileInput.addEventListener('change', async (e) => {
+      tteFiles = [];
+      for (const file of e.target.files) {
+        const buffer = await file.arrayBuffer();
+        tteFiles.push({ 
+          name: file.name, 
+          bytes: new Uint8Array(buffer),
+          type: file.type 
+        });
+      }
+      renderFileList();
+    });
+
+    function renderFileList() {
+      fileListContainer.innerHTML = '';
+      if (tteFiles.length === 0) {
+        fileListContainer.style.display = 'none';
+        return;
+      }
+      fileListContainer.style.display = 'block';
+
+      tteFiles.forEach((file, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'file-item';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = `${index + 1}. ${file.name}`;
+        
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'file-actions';
+
+        const upBtn = document.createElement('button');
+        upBtn.innerText = '▲';
+        upBtn.disabled = index === 0;
+        upBtn.onclick = () => moveFile(index, index - 1);
+
+        const downBtn = document.createElement('button');
+        downBtn.innerText = '▼';
+        downBtn.disabled = index === tteFiles.length - 1;
+        downBtn.onclick = () => moveFile(index, index + 1);
+
+        const delBtn = document.createElement('button');
+        delBtn.innerText = '✕';
+        delBtn.style.backgroundColor = '#dc3545';
+        delBtn.onclick = () => removeFile(index);
+
+        actionsDiv.appendChild(upBtn);
+        actionsDiv.appendChild(downBtn);
+        actionsDiv.appendChild(delBtn);
+
+        itemDiv.appendChild(nameSpan);
+        itemDiv.appendChild(actionsDiv);
+        fileListContainer.appendChild(itemDiv);
+      });
+    }
+
+    function moveFile(fromIndex, toIndex) {
+      const movedItem = tteFiles.splice(fromIndex, 1)[0];
+      tteFiles.splice(toIndex, 0, movedItem);
+      renderFileList();
+    }
+
+    function removeFile(index) {
+      tteFiles.splice(index, 1);
+      renderFileList();
+    }
+
+    function setBusy(isBusy, text = 'Memproses...') {
+      statusOverlay.style.display = isBusy ? 'flex' : 'none';
+      statusOverlay.innerText = text;
+      tteBtn.disabled = isBusy;
+    }
+
+    function showHint(msg) {
+      hintBox.innerText = msg;
+      hintBox.style.display = 'block';
+      setTimeout(() => { hintBox.style.display = 'none'; }, 5000);
+    }
+
+    function clusterRows(items, tolerance = 6) {
+      const rows = [];
+      items.forEach(item => {
+        const y = item.transform[5];
+        let added = false;
+        for (const row of rows) {
+          const rowY = row[0].transform[5];
+          if (Math.abs(rowY - y) <= tolerance) {
+            row.push(item);
+            row.sort((a, b) => a.transform[4] - b.transform[4]);
+            added = true;
+            break;
+          }
+        }
+        if (!added) rows.push([item]);
+      });
+      return rows;
+    }
+
+    function findNameStartItemInRow(row, nameUpper) {
+      const firstWord = nameUpper.split(' ')[0];
+      let currentText = '';
+      for (const item of row) {
+        currentText += item.str.toUpperCase();
+        if (currentText.includes(firstWord)) return item;
+      }
+      return row[0];
+    }
+
+    function downloadBlob(bytes, mimeType, fileName) {
+      const blob = new Blob([bytes], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    tteBtn.onclick = async () => {
       if (tteFiles.length === 0) {
         return showHint('Harap pilih minimal 1 file (PDF atau Gambar) terlebih dahulu.');
       }
@@ -7,7 +309,6 @@ tteBtn.onclick = async () => {
       try {
         const { PDFDocument, StandardFonts, rgb } = PDFLib;
         
-        // 1) Gabungkan file sesuai urutan kustom pada tteFiles
         const outDoc = await PDFDocument.create();
         for (const f of tteFiles) {
           if (f.type === 'image/jpeg' || f.name.toLowerCase().endsWith('.jpg') || f.name.toLowerCase().endsWith('.jpeg')) {
@@ -57,9 +358,7 @@ tteBtn.onclick = async () => {
             setBusy(true, `Mencari nama di halaman ${i}/${pdfjsDoc.numPages}...`);
             const page = await pdfjsDoc.getPage(i);
             const tc = await page.getTextContent();
-            
-            // Perbaikan: Perluas toleransi klaster baris agar teks berdekatan terbaca sebagai satu kesatuan
-            const rows = clusterRows(tc.items, 6);
+            const rows = clusterRows(tc.items, 6); // Toleransi dinaikkan agar baris terbaca optimal
             const outPage = outPages[i - 1];
             
             if (!outPage) continue;
@@ -70,7 +369,6 @@ tteBtn.onclick = async () => {
               rows.forEach(row => {
                 const lineText = row.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim().toUpperCase();
                 
-                // Cek apakah baris mengandung nama yang dicari
                 if (!lineText || !lineText.includes(nameUpper)) return;
 
                 const startItem = findNameStartItemInRow(row, nameUpper) || row[0];
@@ -78,7 +376,6 @@ tteBtn.onclick = async () => {
                 const y = startItem.transform[5];
                 const lineHeight = startItem.height || 10;
 
-                // Ambil posisi vertikal tertinggi/terakhir di halaman jika nama muncul
                 if (lowestMatch === null || y < lowestMatch.y) {
                   lowestMatch = { x, y, lineHeight };
                 }
@@ -87,7 +384,7 @@ tteBtn.onclick = async () => {
               if (lowestMatch) {
                 outPage.drawText(labelText, {
                   x: lowestMatch.x,
-                  y: lowestMatch.y + lowestMatch.lineHeight + 4, // Sedikit dinaikkan jaraknya agar pas di atas nama
+                  y: lowestMatch.y + lowestMatch.lineHeight + 4,
                   size: labelSize,
                   font: fontReg,
                   color: labelColor
@@ -121,3 +418,6 @@ tteBtn.onclick = async () => {
       }
       setBusy(false);
     };
+  </script>
+</body>
+</html>
