@@ -41,7 +41,7 @@
       border-radius: 5px;
       box-sizing: border-box;
     }
-    
+
     #fileListContainer {
       margin-top: 10px;
       max-height: 150px;
@@ -104,13 +104,15 @@
       display: none;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(255,255,255,0.8);
+      background: rgba(255,255,255,0.85);
       justify-content: center;
       align-items: center;
       font-size: 18px;
       font-weight: bold;
       color: #0066cc;
-      z-index: 1000;
+      z-index: 3000;
+      text-align: center;
+      padding: 20px;
     }
     #hint {
       margin-top: 15px;
@@ -121,6 +123,167 @@
       display: none;
       text-align: center;
     }
+
+    /* ===== Preview modal ===== */
+    #previewOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #previewPanel {
+      background: #fff;
+      border-radius: 10px;
+      width: 100%;
+      max-width: 600px;
+      max-height: 94vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    #previewHeader {
+      padding: 14px 18px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #previewHeader h3 {
+      margin: 0;
+      color: #333;
+      font-size: 17px;
+    }
+    #previewStatus {
+      font-size: 13px;
+      color: #555;
+      margin: 0;
+      line-height: 1.4;
+    }
+    #previewHint {
+      font-size: 12px;
+      color: #856404;
+      background: #fff8e1;
+      border: 1px solid #ffe58f;
+      border-radius: 5px;
+      padding: 6px 8px;
+      margin: 0;
+    }
+    #previewActions {
+      display: flex;
+      gap: 8px;
+    }
+    #previewActions button {
+      width: auto;
+      flex: 1;
+      margin-top: 0;
+      padding: 10px;
+      font-size: 14px;
+    }
+    #previewCancelBtn {
+      background: #6c757d;
+    }
+    #previewCancelBtn:hover {
+      background: #5a6268;
+    }
+    #previewBody {
+      overflow: auto;
+      padding: 18px;
+      background: #e9ecef;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      flex: 1;
+    }
+    .preview-page {
+      position: relative;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    }
+    .preview-page canvas {
+      display: block;
+    }
+    .preview-page-num {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      font-size: 11px;
+      color: #888;
+      background: rgba(255,255,255,0.85);
+      padding: 1px 5px;
+      border-radius: 3px;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .stamp-wrapper {
+      position: absolute;
+      cursor: move;
+      user-select: none;
+      touch-action: none;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      z-index: 10;
+    }
+    .stamp-wrapper.dragging {
+      z-index: 30;
+    }
+    .stamp-label {
+      color: #8c8c8c;
+      background: rgba(255,214,0,0.4);
+      outline: 1px dashed #cc9a00;
+      white-space: nowrap;
+      padding: 0 2px;
+      line-height: 1.15;
+    }
+    .stamp-controls {
+      margin-top: 3px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 2px 4px;
+      font-size: 11px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      white-space: nowrap;
+    }
+    .stamp-controls button {
+      width: auto;
+      padding: 1px 6px;
+      margin: 0;
+      font-size: 11px;
+      background: #0066cc;
+      border-radius: 3px;
+    }
+    .stamp-controls button:hover {
+      background: #005bb5;
+    }
+    .gap-wrap {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      color: #555;
+    }
+    .gap-input {
+      width: 46px;
+      padding: 1px 3px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    .preview-loading {
+      padding: 40px;
+      color: #666;
+      font-size: 14px;
+    }
   </style>
 
   <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
@@ -130,7 +293,7 @@
 
   <div class="container">
     <h2>Gabung, Kompres & TTE PDF</h2>
-    
+
     <div class="form-group">
       <label>Pilih File (PDF / Gambar JPG / PNG):</label>
       <input type="file" id="fileInput" accept="application/pdf, image/jpeg, image/png" multiple>
@@ -157,12 +320,28 @@
       <input type="text" id="tteNama2" placeholder="Contoh: I KETUT ARIMBAWA">
     </div>
 
-    <button id="tteBtn">Proses & Download PDF</button>
-    
+    <button id="tteBtn">Proses & Pratinjau PDF</button>
+
     <div id="hint"></div>
   </div>
 
   <div id="statusOverlay">Memproses...</div>
+
+  <!-- Preview modal -->
+  <div id="previewOverlay">
+    <div id="previewPanel">
+      <div id="previewHeader">
+        <h3>Pratinjau Sebelum Download</h3>
+        <p id="previewStatus"></p>
+        <p id="previewHint">Geser label "Ditandatangani secara elektronik" (kotak kuning) ke atas/bawah, pakai tombol ▲▼, atau isi jarak dalam pt — supaya nanti tidak tertutup kotak QR TTE.</p>
+        <div id="previewActions">
+          <button id="previewCancelBtn" type="button">Batal</button>
+          <button id="previewDownloadBtn" type="button">Unduh PDF</button>
+        </div>
+      </div>
+      <div id="previewBody"></div>
+    </div>
+  </div>
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -176,16 +355,30 @@
     const statusOverlay = document.getElementById('statusOverlay');
     const hintBox = document.getElementById('hint');
 
+    const previewOverlay = document.getElementById('previewOverlay');
+    const previewStatus = document.getElementById('previewStatus');
+    const previewBody = document.getElementById('previewBody');
+    const previewCancelBtn = document.getElementById('previewCancelBtn');
+    const previewDownloadBtn = document.getElementById('previewDownloadBtn');
+
     let tteFiles = [];
+
+    // State shared between "Proses" and the preview modal's "Unduh PDF"
+    let outDocRef = null;          // pdf-lib PDFDocument currently being prepared
+    let pendingStampsByPage = {};  // { pageIndex(0-based): [stamp, ...] }
+
+    const LABEL_TEXT = 'Ditandatangani secara elektronik';
+    const LABEL_SIZE = 9;
+    const LABEL_DEFAULT_GAP = 5; // pt above the printed name
 
     fileInput.addEventListener('change', async (e) => {
       tteFiles = [];
       for (const file of e.target.files) {
         const buffer = await file.arrayBuffer();
-        tteFiles.push({ 
-          name: file.name, 
+        tteFiles.push({
+          name: file.name,
           bytes: new Uint8Array(buffer),
-          type: file.type 
+          type: file.type
         });
       }
       renderFileList();
@@ -202,10 +395,10 @@
       tteFiles.forEach((file, index) => {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'file-item';
-        
+
         const nameSpan = document.createElement('span');
         nameSpan.innerText = `${index + 1}. ${file.name}`;
-        
+
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'file-actions';
 
@@ -254,7 +447,7 @@
     function showHint(msg) {
       hintBox.innerText = msg;
       hintBox.style.display = 'block';
-      setTimeout(() => { hintBox.style.display = 'none'; }, 5000);
+      setTimeout(() => { hintBox.style.display = 'none'; }, 6000);
     }
 
     function clusterRows(items, tolerance = 8) {
@@ -276,14 +469,117 @@
       return rows;
     }
 
-    function findNameStartItemInRow(row, nameUpper) {
-      const firstWord = nameUpper.split(' ')[0];
-      let currentText = '';
-      for (const item of row) {
-        currentText += item.str.toUpperCase();
-        if (currentText.includes(firstWord)) return item;
+    // --- Name-matching helpers (fixed to support several names side-by-side
+    //     on the same line, and to only match whole words) ---
+
+    function escapeRegex(s) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function toToken(item) {
+      const height = item.height || 10;
+      return {
+        raw: item.str,
+        upper: item.str.toUpperCase(),
+        x: item.transform[4],
+        y: item.transform[5],
+        height: height,
+        width: item.width || (item.str.length * height * 0.5)
+      };
+    }
+
+    // Split a text row into column "segments" wherever there's a big
+    // horizontal gap (e.g. between a left-hand signer and a right-hand
+    // signer printed on the same line).
+    function splitRowIntoSegments(items, gapThreshold = 30) {
+      const tokens = items
+        .filter(it => it.str && it.str.trim().length > 0)
+        .map(toToken)
+        .sort((a, b) => a.x - b.x);
+
+      const segments = [];
+      let current = [];
+      let prevEndX = null;
+      tokens.forEach(t => {
+        if (prevEndX !== null && (t.x - prevEndX) > gapThreshold) {
+          if (current.length) segments.push(current);
+          current = [];
+        }
+        current.push(t);
+        prevEndX = t.x + t.width;
+      });
+      if (current.length) segments.push(current);
+      return segments;
+    }
+
+    // Look for nameUpper as a whole-word match inside one segment's tokens.
+    // Returns the token where the match starts (so we know x/y to stamp).
+    function findInSegment(tokens, nameUpper) {
+      let text = '';
+      const map = [];
+      tokens.forEach((t, idx) => {
+        if (idx > 0) text += ' ';
+        const start = text.length;
+        text += t.upper;
+        map.push({ start, end: text.length, idx });
+      });
+
+      const pattern = new RegExp('(^|[^A-Z0-9])' + escapeRegex(nameUpper) + '($|[^A-Z0-9])');
+      const m = pattern.exec(text);
+      if (!m) return null;
+
+      const matchStart = m.index + (m[1] ? m[1].length : 0);
+      let entry = map.find(e => matchStart >= e.start && matchStart < e.end);
+      if (!entry) entry = map[map.length - 1];
+      return tokens[entry.idx];
+    }
+
+    // Scan every page of the (unstamped) merged PDF and figure out where
+    // each requested name's "Ditandatangani secara elektronik" label
+    // should go. Returns { stampsByPage, totalStamped }.
+    async function findTteStamps(mergedBytes, namesUpper) {
+      const pdfjsDoc = await pdfjsLib.getDocument({ data: mergedBytes.slice(0) }).promise;
+      const stampsByPage = {};
+      let totalStamped = 0;
+
+      for (let i = 1; i <= pdfjsDoc.numPages; i++) {
+        setBusy(true, `Mencari nama di halaman ${i}/${pdfjsDoc.numPages}...`);
+        const page = await pdfjsDoc.getPage(i);
+        const tc = await page.getTextContent();
+        const rows = clusterRows(tc.items, 8);
+        const pageIdx = i - 1;
+
+        namesUpper.forEach(nameUpper => {
+          let best = null;
+
+          rows.forEach(row => {
+            const segments = splitRowIntoSegments(row, 30);
+            segments.forEach(seg => {
+              const found = findInSegment(seg, nameUpper);
+              if (found && (best === null || found.y < best.y)) {
+                best = found;
+              }
+            });
+          });
+
+          if (best) {
+            const stamp = {
+              id: pageIdx + '-' + nameUpper.replace(/\s+/g, '_') + '-' + Math.random().toString(36).slice(2, 8),
+              text: LABEL_TEXT,
+              size: LABEL_SIZE,
+              x: best.x,
+              y: best.y + best.height + LABEL_DEFAULT_GAP,
+              refY: best.y,
+              refHeight: best.height
+            };
+            if (!stampsByPage[pageIdx]) stampsByPage[pageIdx] = [];
+            stampsByPage[pageIdx].push(stamp);
+            totalStamped++;
+          }
+        });
       }
-      return row[0];
+
+      return { stampsByPage, totalStamped };
     }
 
     function downloadBlob(bytes, mimeType, fileName) {
@@ -298,6 +594,8 @@
       URL.revokeObjectURL(url);
     }
 
+    // ================= Main process: merge + locate stamps, then preview =================
+
     tteBtn.onclick = async () => {
       if (tteFiles.length === 0) {
         return showHint('Harap pilih minimal 1 file (PDF atau Gambar) terlebih dahulu.');
@@ -305,8 +603,8 @@
 
       setBusy(true, 'Menggabungkan & Mengonversi File...');
       try {
-        const { PDFDocument, StandardFonts, rgb } = PDFLib;
-        
+        const { PDFDocument } = PDFLib;
+
         const outDoc = await PDFDocument.create();
         for (const f of tteFiles) {
           if (f.type === 'image/jpeg' || f.name.toLowerCase().endsWith('.jpg') || f.name.toLowerCase().endsWith('.jpeg')) {
@@ -339,81 +637,255 @@
         const names = [tteNama1.value, tteNama2.value]
           .map(s => (s || '').trim())
           .filter(Boolean);
+        const namesUpper = names.map(n => n.toUpperCase().replace(/\s+/g, ' ').trim());
 
-        if (names.length > 0) {
-          const mergedBytes = await outDoc.save();
-          const pdfjsDoc = await pdfjsLib.getDocument({ data: mergedBytes.slice(0) }).promise;
+        let stampsByPage = {};
+        let totalStamped = 0;
 
-          const fontReg = await outDoc.embedFont(StandardFonts.Helvetica);
-          const labelSize = 9;
-          const labelText = 'Ditandatangani secara elektronik';
-          const labelColor = rgb(0.55, 0.55, 0.55);
-          const namesUpper = names.map(n => n.toUpperCase());
-          const outPages = outDoc.getPages();
-          let totalStamped = 0;
+        setBusy(true, 'Menyiapkan pratinjau...');
+        const mergedBytes = await outDoc.save();
 
-          for (let i = 1; i <= pdfjsDoc.numPages; i++) {
-            setBusy(true, `Mencari nama di halaman ${i}/${pdfjsDoc.numPages}...`);
-            const page = await pdfjsDoc.getPage(i);
-            const tc = await page.getTextContent();
-            // Toleransi dinaikkan ke 8 agar aman membaca spasi antar baris penandatangan
-            const rows = clusterRows(tc.items, 8);
-            const outPage = outPages[i - 1];
-            
-            if (!outPage) continue;
-
-            namesUpper.forEach(nameUpper => {
-              let lowestMatch = null;
-
-              rows.forEach(row => {
-                const lineText = row.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim().toUpperCase();
-                
-                if (!lineText || !lineText.includes(nameUpper)) return;
-
-                const startItem = findNameStartItemInRow(row, nameUpper) || row[0];
-                const x = startItem.transform[4];
-                const y = startItem.transform[5];
-                const lineHeight = startItem.height || 10;
-
-                if (lowestMatch === null || y < lowestMatch.y) {
-                  lowestMatch = { x, y, lineHeight };
-                }
-              });
-
-              if (lowestMatch) {
-                outPage.drawText(labelText, {
-                  x: lowestMatch.x,
-                  y: lowestMatch.y + lowestMatch.lineHeight + 5, // Jarak vertikal pas di atas nama
-                  size: labelSize,
-                  font: fontReg,
-                  color: labelColor
-                });
-                totalStamped++;
-              }
-            });
-          }
-
+        if (namesUpper.length > 0) {
+          const result = await findTteStamps(mergedBytes, namesUpper);
+          stampsByPage = result.stampsByPage;
+          totalStamped = result.totalStamped;
           if (totalStamped === 0) {
             showHint('Nama tidak ditemukan di teks dokumen. Pastikan ejaan sama persis.');
-          } else {
-            showHint(`Berhasil menempel ${totalStamped} tanda tangan.`);
           }
         }
 
-        setBusy(true, 'Menyiapkan & Mengompres PDF...');
-        
+        outDocRef = outDoc;
+        pendingStampsByPage = stampsByPage;
+
+        setBusy(false);
+        await openPreview(mergedBytes, stampsByPage, totalStamped, namesUpper.length);
+
+      } catch (err) {
+        console.error(err);
+        showHint('Terjadi kesalahan saat memproses file.');
+        setBusy(false);
+      }
+    };
+
+    // ================= Preview modal =================
+
+    async function openPreview(mergedBytes, stampsByPage, totalStamped, namesRequested) {
+      if (namesRequested === 0) {
+        previewStatus.innerText = 'Pratinjau dokumen gabungan. Tidak ada nama TTE yang diisi, jadi tidak ada label yang ditempel.';
+      } else if (totalStamped > 0) {
+        previewStatus.innerText = `Ditemukan ${totalStamped} tanda tangan. Periksa posisinya di bawah, geser bila perlu, lalu klik "Unduh PDF".`;
+      } else {
+        previewStatus.innerText = 'Nama tidak ditemukan di teks dokumen sehingga tidak ada label yang ditempel.';
+      }
+
+      previewOverlay.style.display = 'flex';
+      previewBody.innerHTML = '<div class="preview-loading">Memuat pratinjau...</div>';
+
+      try {
+        await renderPreview(mergedBytes, stampsByPage);
+      } catch (err) {
+        console.error(err);
+        previewBody.innerHTML = '<div class="preview-loading">Gagal memuat pratinjau halaman.</div>';
+      }
+    }
+
+    function closePreview() {
+      previewOverlay.style.display = 'none';
+      previewBody.innerHTML = '';
+    }
+
+    previewCancelBtn.onclick = () => {
+      closePreview();
+    };
+
+    async function renderPreview(mergedBytes, stampsByPage) {
+      previewBody.innerHTML = '';
+      const pdfDoc = await pdfjsLib.getDocument({ data: mergedBytes.slice(0) }).promise;
+
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const targetWidth = 500;
+        const scale = Math.min(1.6, targetWidth / baseViewport.width);
+        const viewport = page.getViewport({ scale });
+
+        const pageBlock = document.createElement('div');
+        pageBlock.className = 'preview-page';
+        pageBlock.style.width = viewport.width + 'px';
+        pageBlock.style.height = viewport.height + 'px';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        pageBlock.appendChild(canvas);
+
+        const pageLabel = document.createElement('div');
+        pageLabel.className = 'preview-page-num';
+        pageLabel.innerText = `Halaman ${i}/${pdfDoc.numPages}`;
+        pageBlock.appendChild(pageLabel);
+
+        previewBody.appendChild(pageBlock);
+
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const pageIdx = i - 1;
+        const stamps = stampsByPage[pageIdx] || [];
+        stamps.forEach(stamp => {
+          createStampElement(pageBlock, stamp, scale, viewport.height);
+        });
+      }
+    }
+
+    function mkControlBtn(txt, title, onClick) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.innerText = txt;
+      b.title = title;
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      b.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+      return b;
+    }
+
+    function createStampElement(container, stamp, scale, viewportHeightPx) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'stamp-wrapper';
+
+      const label = document.createElement('div');
+      label.className = 'stamp-label';
+      label.innerText = stamp.text;
+      label.style.fontSize = Math.max(9, stamp.size * scale) + 'px';
+      wrapper.appendChild(label);
+
+      const controls = document.createElement('div');
+      controls.className = 'stamp-controls';
+
+      const gapInput = document.createElement('input');
+      gapInput.type = 'number';
+      gapInput.step = '1';
+      gapInput.className = 'gap-input';
+
+      function currentGap() {
+        return Math.round((stamp.y - (stamp.refY + stamp.refHeight)) * 10) / 10;
+      }
+      function refreshGapInput() {
+        gapInput.value = currentGap();
+      }
+      refreshGapInput();
+
+      function reposition() {
+        const leftPx = stamp.x * scale;
+        const topPx = viewportHeightPx - (stamp.y * scale) - (stamp.size * scale * 0.8);
+        wrapper.style.left = leftPx + 'px';
+        wrapper.style.top = topPx + 'px';
+      }
+      reposition();
+
+      function adjust(deltaPt) {
+        stamp.y += deltaPt;
+        refreshGapInput();
+        reposition();
+      }
+
+      const upBtn = mkControlBtn('▲', 'Naikkan (jauhkan dari nama)', () => adjust(1));
+      const downBtn = mkControlBtn('▼', 'Turunkan (dekatkan ke nama)', () => adjust(-1));
+
+      gapInput.addEventListener('pointerdown', e => e.stopPropagation());
+      gapInput.addEventListener('input', () => {
+        const val = parseFloat(gapInput.value);
+        if (!isNaN(val)) {
+          stamp.y = stamp.refY + stamp.refHeight + val;
+          reposition();
+        }
+      });
+
+      const gapWrap = document.createElement('span');
+      gapWrap.className = 'gap-wrap';
+      gapWrap.appendChild(document.createTextNode('Jarak:'));
+      gapWrap.appendChild(gapInput);
+      gapWrap.appendChild(document.createTextNode('pt'));
+
+      controls.appendChild(upBtn);
+      controls.appendChild(downBtn);
+      controls.appendChild(gapWrap);
+      wrapper.appendChild(controls);
+
+      // Dragging (mouse + touch via Pointer Events)
+      let dragging = false;
+      let startClientX = 0, startClientY = 0, startLeft = 0, startTop = 0;
+
+      wrapper.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.stamp-controls')) return;
+        dragging = true;
+        wrapper.classList.add('dragging');
+        wrapper.setPointerCapture(e.pointerId);
+        startClientX = e.clientX;
+        startClientY = e.clientY;
+        startLeft = parseFloat(wrapper.style.left) || 0;
+        startTop = parseFloat(wrapper.style.top) || 0;
+      });
+
+      wrapper.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - startClientX;
+        const dy = e.clientY - startClientY;
+        wrapper.style.left = (startLeft + dx) + 'px';
+        wrapper.style.top = (startTop + dy) + 'px';
+      });
+
+      function endDrag(e) {
+        if (!dragging) return;
+        dragging = false;
+        wrapper.classList.remove('dragging');
+        const dx = e.clientX - startClientX;
+        const dy = e.clientY - startClientY;
+        stamp.x += dx / scale;
+        stamp.y += -dy / scale;
+        refreshGapInput();
+        reposition();
+      }
+      wrapper.addEventListener('pointerup', endDrag);
+      wrapper.addEventListener('pointercancel', endDrag);
+
+      container.appendChild(wrapper);
+    }
+
+    previewDownloadBtn.onclick = async () => {
+      if (!outDocRef) return;
+      setBusy(true, 'Menyiapkan & Mengompres PDF...');
+      try {
+        const { StandardFonts, rgb } = PDFLib;
+        const labelColor = rgb(0.55, 0.55, 0.55);
+        const fontReg = await outDocRef.embedFont(StandardFonts.Helvetica);
+        const outPages = outDocRef.getPages();
+
+        Object.keys(pendingStampsByPage).forEach(pageIdxStr => {
+          const pageIdx = parseInt(pageIdxStr, 10);
+          const page = outPages[pageIdx];
+          if (!page) return;
+          pendingStampsByPage[pageIdx].forEach(stamp => {
+            page.drawText(stamp.text, {
+              x: stamp.x,
+              y: stamp.y,
+              size: stamp.size,
+              font: fontReg,
+              color: labelColor
+            });
+          });
+        });
+
         const compVal = compressionLevel.value;
         let saveOptions = { useObjectStreams: true };
         if (compVal === 'medium' || compVal === 'high') {
           saveOptions.addDefaultPage = false;
         }
 
-        const bytes = await outDoc.save(saveOptions);
+        const bytes = await outDocRef.save(saveOptions);
         downloadBlob(bytes, 'application/pdf', 'Dokumen_Gabungan_TTE.pdf');
-        
+        closePreview();
       } catch (err) {
         console.error(err);
-        showHint('Terjadi kesalahan saat memproses file.');
+        showHint('Terjadi kesalahan saat menyimpan PDF.');
       }
       setBusy(false);
     };
