@@ -266,6 +266,12 @@
     .stamp-controls button:hover {
       background: #005bb5;
     }
+    .stamp-controls button.del-btn {
+      background: #dc3545;
+    }
+    .stamp-controls button.del-btn:hover {
+      background: #c62839;
+    }
     .gap-wrap {
       display: flex;
       align-items: center;
@@ -283,6 +289,59 @@
       padding: 40px;
       color: #666;
       font-size: 14px;
+    }
+
+    /* Toggle button to edit/drag the document's own (existing) text */
+    .toggle-edit-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: auto;
+      margin: 0;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: normal;
+      background: #495057;
+      border-radius: 4px;
+      z-index: 6;
+      opacity: 0.85;
+    }
+    .toggle-edit-btn:hover {
+      background: #343a40;
+      opacity: 1;
+    }
+    .preview-page.edit-mode {
+      outline: 2px solid #17a2b8;
+    }
+    .existing-text-wrapper {
+      position: absolute;
+      cursor: move;
+      user-select: none;
+      touch-action: none;
+      background: rgba(23, 162, 184, 0.15);
+      outline: 1px dashed #17a2b8;
+      z-index: 8;
+    }
+    .existing-text-wrapper.dragging {
+      z-index: 25;
+      background: rgba(23, 162, 184, 0.3);
+    }
+    .existing-text-reset {
+      position: absolute;
+      top: -9px;
+      right: -9px;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      line-height: 16px;
+      font-size: 11px;
+      background: #17a2b8;
+      border-radius: 50%;
+      margin: 0;
+      text-align: center;
+    }
+    .existing-text-reset:hover {
+      background: #128295;
     }
   </style>
 
@@ -333,7 +392,7 @@
       <div id="previewHeader">
         <h3>Pratinjau Sebelum Download</h3>
         <p id="previewStatus"></p>
-        <p id="previewHint">Geser label "Ditandatangani secara elektronik" (kotak kuning) ke atas/bawah, pakai tombol ▲▼, atau isi jarak dalam pt — supaya nanti tidak tertutup kotak QR TTE.</p>
+        <p id="previewHint">Label kuning "Ditandatangani secara elektronik" bisa digeser, diatur jaraknya, atau dihapus (✕) langsung di sini. Klik "Edit teks asli" di pojok kanan atas tiap halaman kalau teks yang sudah ada di dokumen (nama/NIP/dll) juga perlu digeser — supaya nanti tidak tertutup kotak QR TTE.</p>
         <div id="previewActions">
           <button id="previewCancelBtn" type="button">Batal</button>
           <button id="previewDownloadBtn" type="button">Unduh PDF</button>
@@ -365,7 +424,9 @@
 
     // State shared between "Proses" and the preview modal's "Unduh PDF"
     let outDocRef = null;          // pdf-lib PDFDocument currently being prepared
-    let pendingStampsByPage = {};  // { pageIndex(0-based): [stamp, ...] }
+    let pendingStampsByPage = {};  // { pageIndex(0-based): [stamp, ...] } — added TTE labels
+    let existingSegmentsByPage = {}; // { pageIndex: [ [token,...], ... ] } — every detected text run on the page (for "Edit teks asli")
+    let existingTextEditsByPage = {}; // { pageIndex: [ {id, tokens, dx, dy}, ... ] } — only entries the user actually moved
 
     const LABEL_TEXT = 'Ditandatangani secara elektronik';
     const LABEL_SIZE = 9;
@@ -656,6 +717,8 @@
 
         outDocRef = outDoc;
         pendingStampsByPage = stampsByPage;
+        existingTextEditsByPage = {};
+        existingSegmentsByPage = {};
 
         setBusy(false);
         await openPreview(mergedBytes, stampsByPage, totalStamped, namesUpper.length);
@@ -708,6 +771,7 @@
         const targetWidth = 500;
         const scale = Math.min(1.6, targetWidth / baseViewport.width);
         const viewport = page.getViewport({ scale });
+        const pageIdx = i - 1;
 
         const pageBlock = document.createElement('div');
         pageBlock.className = 'preview-page';
@@ -729,12 +793,59 @@
         const ctx = canvas.getContext('2d');
         await page.render({ canvasContext: ctx, viewport }).promise;
 
-        const pageIdx = i - 1;
+        // Detect every existing text run on this page, so "Edit teks asli"
+        // can offer them as draggable regions later (built lazily on click).
+        const tc = await page.getTextContent();
+        const rows = clusterRows(tc.items, 8);
+        const segments = [];
+        rows.forEach(row => {
+          splitRowIntoSegments(row, 30).forEach(seg => segments.push(seg));
+        });
+        existingSegmentsByPage[pageIdx] = segments;
+
         const stamps = stampsByPage[pageIdx] || [];
         stamps.forEach(stamp => {
-          createStampElement(pageBlock, stamp, scale, viewport.height);
+          createStampElement(pageBlock, stamp, pageIdx, scale, viewport.height);
         });
+
+        setupExistingTextToggle(pageBlock, pageIdx, scale, viewport.height);
       }
+    }
+
+    function setupExistingTextToggle(pageBlock, pageIdx, scale, viewportHeightPx) {
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'toggle-edit-btn';
+      toggleBtn.innerText = 'Edit teks asli';
+
+      let editModeOn = false;
+      let overlaysBuilt = false;
+      let overlayEls = [];
+
+      toggleBtn.addEventListener('click', () => {
+        editModeOn = !editModeOn;
+        if (editModeOn) {
+          toggleBtn.innerText = 'Sembunyikan area teks';
+          pageBlock.classList.add('edit-mode');
+          if (!overlaysBuilt) {
+            const segments = existingSegmentsByPage[pageIdx] || [];
+            segments.forEach((segTokens, segIdx) => {
+              const segId = pageIdx + '-seg-' + segIdx;
+              const el = createExistingTextOverlay(pageBlock, segTokens, pageIdx, segId, scale, viewportHeightPx);
+              overlayEls.push(el);
+            });
+            overlaysBuilt = true;
+          } else {
+            overlayEls.forEach(el => { el.style.display = ''; });
+          }
+        } else {
+          toggleBtn.innerText = 'Edit teks asli';
+          pageBlock.classList.remove('edit-mode');
+          overlayEls.forEach(el => { el.style.display = 'none'; });
+        }
+      });
+
+      pageBlock.appendChild(toggleBtn);
     }
 
     function mkControlBtn(txt, title, onClick) {
@@ -747,7 +858,7 @@
       return b;
     }
 
-    function createStampElement(container, stamp, scale, viewportHeightPx) {
+    function createStampElement(container, stamp, pageIdx, scale, viewportHeightPx) {
       const wrapper = document.createElement('div');
       wrapper.className = 'stamp-wrapper';
 
@@ -805,9 +916,20 @@
       gapWrap.appendChild(gapInput);
       gapWrap.appendChild(document.createTextNode('pt'));
 
+      const delBtn = mkControlBtn('✕', 'Hapus label ini', () => {
+        const arr = pendingStampsByPage[pageIdx];
+        if (arr) {
+          const idx = arr.findIndex(s => s.id === stamp.id);
+          if (idx >= 0) arr.splice(idx, 1);
+        }
+        wrapper.remove();
+      });
+      delBtn.classList.add('del-btn');
+
       controls.appendChild(upBtn);
       controls.appendChild(downBtn);
       controls.appendChild(gapWrap);
+      controls.appendChild(delBtn);
       wrapper.appendChild(controls);
 
       // Dragging (mouse + touch via Pointer Events)
@@ -850,6 +972,104 @@
       container.appendChild(wrapper);
     }
 
+    // ---- "Edit teks asli": draggable overlays for text already in the document ----
+
+    function upsertTextEdit(pageIdx, segId, tokens, dx, dy) {
+      if (!existingTextEditsByPage[pageIdx]) existingTextEditsByPage[pageIdx] = [];
+      const arr = existingTextEditsByPage[pageIdx];
+      const idx = arr.findIndex(e => e.id === segId);
+      const entry = { id: segId, tokens, dx, dy };
+      if (idx >= 0) arr[idx] = entry; else arr.push(entry);
+    }
+
+    function removeTextEdit(pageIdx, segId) {
+      const arr = existingTextEditsByPage[pageIdx];
+      if (!arr) return;
+      const idx = arr.findIndex(e => e.id === segId);
+      if (idx >= 0) arr.splice(idx, 1);
+    }
+
+    function createExistingTextOverlay(container, tokens, pageIdx, segId, scale, viewportHeightPx) {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      tokens.forEach(t => {
+        minX = Math.min(minX, t.x);
+        maxX = Math.max(maxX, t.x + t.width);
+        minY = Math.min(minY, t.y);
+        maxY = Math.max(maxY, t.y + t.height);
+      });
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'existing-text-wrapper';
+      wrapper.title = tokens.map(t => t.raw).join(' ');
+
+      const existing = (existingTextEditsByPage[pageIdx] || []).find(e => e.id === segId);
+      let dx = existing ? existing.dx : 0;
+      let dy = existing ? existing.dy : 0;
+
+      const pad = 1;
+      function reposition() {
+        wrapper.style.left = ((minX + dx) - pad) * scale + 'px';
+        wrapper.style.top = (viewportHeightPx - ((maxY + dy) + pad) * scale) + 'px';
+        wrapper.style.width = ((maxX - minX) + pad * 2) * scale + 'px';
+        wrapper.style.height = ((maxY - minY) + pad * 2) * scale + 'px';
+      }
+      reposition();
+
+      const resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'existing-text-reset';
+      resetBtn.innerText = '↺';
+      resetBtn.title = 'Kembalikan ke posisi asli';
+      resetBtn.addEventListener('pointerdown', e => e.stopPropagation());
+      resetBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        dx = 0; dy = 0;
+        removeTextEdit(pageIdx, segId);
+        reposition();
+      });
+      wrapper.appendChild(resetBtn);
+
+      let dragging = false;
+      let startClientX = 0, startClientY = 0, startDx = 0, startDy = 0;
+
+      wrapper.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.existing-text-reset')) return;
+        dragging = true;
+        wrapper.classList.add('dragging');
+        wrapper.setPointerCapture(e.pointerId);
+        startClientX = e.clientX;
+        startClientY = e.clientY;
+        startDx = dx;
+        startDy = dy;
+      });
+
+      wrapper.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const pxDx = e.clientX - startClientX;
+        const pxDy = e.clientY - startClientY;
+        dx = startDx + pxDx / scale;
+        dy = startDy + (-pxDy / scale);
+        reposition();
+      });
+
+      function endDrag() {
+        if (!dragging) return;
+        dragging = false;
+        wrapper.classList.remove('dragging');
+        if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
+          upsertTextEdit(pageIdx, segId, tokens, dx, dy);
+        } else {
+          dx = 0; dy = 0;
+          removeTextEdit(pageIdx, segId);
+        }
+      }
+      wrapper.addEventListener('pointerup', endDrag);
+      wrapper.addEventListener('pointercancel', endDrag);
+
+      container.appendChild(wrapper);
+      return wrapper;
+    }
+
     previewDownloadBtn.onclick = async () => {
       if (!outDocRef) return;
       setBusy(true, 'Menyiapkan & Mengompres PDF...');
@@ -870,6 +1090,48 @@
               size: stamp.size,
               font: fontReg,
               color: labelColor
+            });
+          });
+        });
+
+        // Apply any moves made to text that was already in the document:
+        // cover the original spot with white, then redraw it shifted.
+        Object.keys(existingTextEditsByPage).forEach(pageIdxStr => {
+          const pageIdx = parseInt(pageIdxStr, 10);
+          const page = outPages[pageIdx];
+          if (!page) return;
+          existingTextEditsByPage[pageIdx].forEach(edit => {
+            if (Math.abs(edit.dx) < 0.05 && Math.abs(edit.dy) < 0.05) return;
+
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            edit.tokens.forEach(t => {
+              minX = Math.min(minX, t.x);
+              maxX = Math.max(maxX, t.x + t.width);
+              minY = Math.min(minY, t.y);
+              maxY = Math.max(maxY, t.y + t.height);
+            });
+            const pad = 2;
+            page.drawRectangle({
+              x: minX - pad,
+              y: minY - pad,
+              width: (maxX - minX) + pad * 2,
+              height: (maxY - minY) + pad * 2,
+              color: rgb(1, 1, 1)
+            });
+
+            edit.tokens.forEach(t => {
+              if (!t.raw || !t.raw.trim()) return;
+              try {
+                page.drawText(t.raw, {
+                  x: t.x + edit.dx,
+                  y: t.y + edit.dy,
+                  size: Math.max(6, t.height),
+                  font: fontReg,
+                  color: rgb(0, 0, 0)
+                });
+              } catch (e) {
+                console.error('Gagal menggambar ulang teks:', t.raw, e);
+              }
             });
           });
         });
